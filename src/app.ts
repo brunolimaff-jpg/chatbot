@@ -4,15 +4,22 @@ import { BaileysProvider as Provider } from '@builderbot/provider-baileys'
 
 import { IntakeLeadUseCase } from './application/use-cases/intake-lead.use-case.ts'
 import { HandoffLeadUseCase } from './application/use-cases/handoff-lead.use-case.ts'
+import { LEAD_TEMPERATURE } from './domain/entities/lead.ts'
 import { LeadQualificationService } from './domain/services/lead-qualification.service.ts'
-import { SafetyGuardService } from './domain/services/safety-guard.service.ts'
+import { HIGH_RISK_KEYWORDS, SafetyGuardService } from './domain/services/safety-guard.service.ts'
 import { HeuristicAiAssistant } from './infrastructure/ai/heuristic-ai-assistant.ts'
 import { ConsoleHandoffGateway } from './infrastructure/handoff/console-handoff.gateway.ts'
 import { InMemoryLeadRepository } from './infrastructure/repositories/in-memory-lead.repository.ts'
 import { retry } from './shared/retry.ts'
+import { normalizeForMatch } from './shared/text-normalizer.ts'
 
 const PORT = process.env.PORT ?? 3008
 const HANDOFF_WHATSAPP_NUMBER = process.env.HANDOFF_WHATSAPP_NUMBER ?? '65981506458'
+
+const FLOW_ERROR_MESSAGE = [
+    'Tive uma instabilidade ao processar sua solicitacao.',
+    'Ja encaminhei para atendimento humano para continuar com seguranca.',
+].join('\n')
 
 const leadRepository = new InMemoryLeadRepository()
 const aiAssistant = new HeuristicAiAssistant()
@@ -34,21 +41,14 @@ const handoffLeadUseCase = new HandoffLeadUseCase({
     handoffGateway,
 })
 
-const normalize = (value = '') =>
-    String(value)
-        .toLowerCase()
-        .normalize('NFD')
-        .replace(/[\u0300-\u036f]/g, '')
-        .trim()
-
 const isYes = (value = '') => {
-    const normalized = normalize(value)
+    const normalized = normalizeForMatch(value)
     return ['sim', 'claro', 'ok', 'autorizo', 'aceito', 'pode'].some((item) => normalized.includes(item))
 }
 
 const isNo = (value = '') => {
-    const normalized = normalize(value)
-    return ['nao', 'negativo', 'recuso', 'prefiro nao', 'prefiro não'].some((item) => normalized.includes(item))
+    const normalized = normalizeForMatch(value)
+    return ['nao', 'negativo', 'recuso', 'prefiro nao'].some((item) => normalized.includes(item))
 }
 
 const sendJson = (res, statusCode, payload) => {
@@ -57,9 +57,13 @@ const sendJson = (res, statusCode, payload) => {
 }
 
 const leadTemperatureMessage = (temperature) => {
-    if (temperature === 'quente') return 'Seu interesse esta pronto para atendimento prioritario.'
-    if (temperature === 'morno') return 'Voce esta quase pronto para agendar, nossa equipe vai ajudar com os detalhes.'
+    if (temperature === LEAD_TEMPERATURE.HOT) return 'Seu interesse esta pronto para atendimento prioritario.'
+    if (temperature === LEAD_TEMPERATURE.WARM) return 'Voce esta quase pronto para agendar, nossa equipe vai ajudar com os detalhes.'
     return 'Vamos te orientar sem pressa para encontrar a melhor opcao.'
+}
+
+const logFlowError = (context, error) => {
+    console.error(`[flow:${context}]`, error)
 }
 
 const closingFlow = addKeyword(utils.setEvent('CLOSING_FLOW')).addAnswer(
@@ -74,44 +78,41 @@ const objectionsFlow = addKeyword(['preco', 'valor', 'custa', 'caro', 'doi', 'do
     ].join('\n')
 )
 
-const emergencyFlow = addKeyword([
-    'dor intensa',
-    'sangramento',
-    'falta de ar',
-    'infeccao',
-    'infecao',
-    'febre',
-    'necrose',
-]).addAction(async (ctx, { flowDynamic, gotoFlow }) => {
+const emergencyFlow = addKeyword(HIGH_RISK_KEYWORDS).addAction(async (ctx, { flowDynamic, gotoFlow }) => {
     const fallbackName = 'Paciente'
     const objective = String(ctx.body ?? 'Relato de risco no chat').trim()
 
-    const intake = await intakeLeadUseCase.execute({
-        phoneNumber: ctx.from,
-        name: fallbackName,
-        objective,
-        preferredWindow: 'urgente',
-        consent: false,
-        source: 'chat',
-    })
+    try {
+        const intake = await intakeLeadUseCase.execute({
+            phoneNumber: ctx.from,
+            name: fallbackName,
+            objective,
+            preferredWindow: 'urgente',
+            consent: false,
+            source: 'chat',
+        })
 
-    await handoffLeadUseCase.execute({
-        leadId: intake.lead.id,
-        reason: 'sinal_de_risco',
-        requestedBy: 'flow',
-    })
+        await handoffLeadUseCase.execute({
+            leadId: intake.lead.id,
+            reason: 'sinal_de_risco',
+            requestedBy: 'flow',
+        })
 
-    await flowDynamic(
-        [
-            'Recebi seu relato e, por seguranca, nao posso orientar conduta clinica por aqui.',
-            'Encaminhei agora para atendimento humano prioritario.',
-        ].join('\n')
-    )
+        await flowDynamic(
+            [
+                'Recebi seu relato e, por seguranca, nao posso orientar conduta clinica por aqui.',
+                'Encaminhei agora para atendimento humano prioritario.',
+            ].join('\n')
+        )
+    } catch (error) {
+        logFlowError('emergency_handoff', error)
+        await flowDynamic(FLOW_ERROR_MESSAGE)
+    }
 
     return gotoFlow(closingFlow)
 })
 
-const welcomeFlow = addKeyword(['oi', 'ola', 'olá', 'agendar', 'agenda', 'quero agendar', 'avaliacao']).addAnswer(
+const welcomeFlow = addKeyword(['oi', 'ola', 'agendar', 'agenda', 'quero agendar', 'avaliacao']).addAnswer(
     [
         'Oi, eu sou a assistente virtual da clinica.',
         'Posso te ajudar a agilizar seu agendamento no WhatsApp em poucas perguntas.',
@@ -141,8 +142,11 @@ const welcomeFlow = addKeyword(['oi', 'ola', 'olá', 'agendar', 'agenda', 'quero
 
         await state.update({ leadObjective: objective })
 
-        if (risk.highRisk || risk.diagnosisRequest) {
-            const fallbackName = String(state.get('leadName') ?? 'Paciente')
+        if (!risk.highRisk && !risk.diagnosisRequest) return
+
+        const fallbackName = String(state.get('leadName') ?? 'Paciente')
+
+        try {
             const intake = await intakeLeadUseCase.execute({
                 phoneNumber: ctx.from,
                 name: fallbackName,
@@ -164,11 +168,12 @@ const welcomeFlow = addKeyword(['oi', 'ola', 'olá', 'agendar', 'agenda', 'quero
                     'Encaminhei sua conversa para nossa equipe humana.',
                 ].join('\n')
             )
-
-            return gotoFlow(closingFlow)
+        } catch (error) {
+            logFlowError('risk_handoff', error)
+            await flowDynamic(FLOW_ERROR_MESSAGE)
         }
 
-        return
+        return gotoFlow(closingFlow)
     })
     .addAnswer(
         'Qual periodo voce prefere para atendimento? (manha, tarde, noite ou dia/horario especifico)',
@@ -187,7 +192,7 @@ const welcomeFlow = addKeyword(['oi', 'ola', 'olá', 'agendar', 'agenda', 'quero
                 await flowDynamic(
                     [
                         'Sem o consentimento nao posso armazenar os dados.',
-                        'Se mudar de ideia, digite *agendar* para recomeçar.',
+                        'Se mudar de ideia, digite *agendar* para recomecar.',
                     ].join('\n')
                 )
                 return gotoFlow(closingFlow)
@@ -197,32 +202,37 @@ const welcomeFlow = addKeyword(['oi', 'ola', 'olá', 'agendar', 'agenda', 'quero
                 return fallBack('Para continuar, responda com *sim* ou *nao*.')
             }
 
-            const leadName = String(state.get('leadName') ?? '').trim()
-            const leadObjective = String(state.get('leadObjective') ?? '').trim()
-            const preferredWindow = String(state.get('preferredWindow') ?? 'nao informado').trim()
+            try {
+                const leadName = String(state.get('leadName') ?? '').trim()
+                const leadObjective = String(state.get('leadObjective') ?? '').trim()
+                const preferredWindow = String(state.get('preferredWindow') ?? 'nao informado').trim()
 
-            const intake = await intakeLeadUseCase.execute({
-                phoneNumber: ctx.from,
-                name: leadName || 'Paciente',
-                objective: leadObjective || 'avaliacao geral',
-                preferredWindow,
-                consent: true,
-                source: 'chat',
-            })
+                const intake = await intakeLeadUseCase.execute({
+                    phoneNumber: ctx.from,
+                    name: leadName || 'Paciente',
+                    objective: leadObjective || 'avaliacao geral',
+                    preferredWindow,
+                    consent: true,
+                    source: 'chat',
+                })
 
-            await handoffLeadUseCase.execute({
-                leadId: intake.lead.id,
-                reason: 'lead_qualificado_whatsapp',
-                requestedBy: 'flow',
-            })
+                await handoffLeadUseCase.execute({
+                    leadId: intake.lead.id,
+                    reason: 'lead_qualificado_whatsapp',
+                    requestedBy: 'flow',
+                })
 
-            await flowDynamic(
-                [
-                    `${intake.lead.name}, recebi seus dados com sucesso.`,
-                    leadTemperatureMessage(intake.lead.temperature),
-                    'Nossa recepcao vai te chamar neste numero para confirmar seu melhor horario.',
-                ].join('\n')
-            )
+                await flowDynamic(
+                    [
+                        `${intake.lead.name}, recebi seus dados com sucesso.`,
+                        leadTemperatureMessage(intake.lead.temperature),
+                        'Nossa recepcao vai te chamar neste numero para confirmar seu melhor horario.',
+                    ].join('\n')
+                )
+            } catch (error) {
+                logFlowError('qualified_handoff', error)
+                await flowDynamic(FLOW_ERROR_MESSAGE)
+            }
 
             return gotoFlow(closingFlow)
         }
@@ -270,7 +280,8 @@ const main = async () => {
                     status: 'ok',
                     message: 'sent',
                 })
-            } catch {
+            } catch (error) {
+                console.error('[POST /v1/messages] Error sending message:', error)
                 return sendJson(res, 503, {
                     status: 'error',
                     message: 'failed to deliver after retries',
@@ -316,6 +327,7 @@ const main = async () => {
                     risk: intake.risk,
                 })
             } catch (error) {
+                console.error('[POST /v1/lead/intake] Error creating intake:', error)
                 return sendJson(res, 422, {
                     status: 'error',
                     message: error.message,
@@ -354,6 +366,7 @@ const main = async () => {
                     dispatchedAt: handoff.handoff.dispatchedAt,
                 })
             } catch (error) {
+                console.error('[POST /v1/lead/handoff] Error forwarding lead:', error)
                 return sendJson(res, 404, {
                     status: 'error',
                     message: error.message,

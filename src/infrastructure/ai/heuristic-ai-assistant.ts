@@ -1,16 +1,11 @@
 import { LEAD_INTEREST } from '../../domain/entities/lead.ts'
-
-const normalize = (text = '') =>
-    String(text)
-        .toLowerCase()
-        .normalize('NFD')
-        .replace(/[\u0300-\u036f]/g, '')
+import { normalizeForMatch } from '../../shared/text-normalizer.ts'
 
 const includesAny = (text, terms) => terms.some((term) => text.includes(term))
 
 export class HeuristicAiAssistant {
     async assessText(text = '') {
-        const normalized = normalize(text)
+        const normalized = normalizeForMatch(text)
 
         const interest = this.resolveInterest(normalized)
         const urgency = this.resolveUrgency(normalized)
@@ -41,16 +36,16 @@ export class HeuristicAiAssistant {
     }
 
     resolveUrgency(text) {
-        if (includesAny(text, ['hoje', 'amanha', 'amanha', 'urgente', 'evento', 'casamento'])) return 'alta'
-        if (includesAny(text, ['essa semana', 'proximos dias', 'próximos dias'])) return 'media'
+        if (includesAny(text, ['hoje', 'amanha', 'urgente', 'evento', 'casamento'])) return 'alta'
+        if (includesAny(text, ['essa semana', 'proximos dias'])) return 'media'
         return 'baixa'
     }
 
     resolveObjection(text) {
         if (includesAny(text, ['preco', 'valor', 'custa', 'caro'])) return 'preco'
-        if (includesAny(text, ['doi', 'dói', 'dor'])) return 'dor'
+        if (includesAny(text, ['doi', 'dor'])) return 'dor'
         if (includesAny(text, ['seguro', 'risco', 'efeito colateral'])) return 'seguranca'
-        if (includesAny(text, ['recuperacao', 'recuperação', 'afastado', 'tempo'])) return 'tempo_recuperacao'
+        if (includesAny(text, ['recuperacao', 'afastado', 'tempo'])) return 'tempo_recuperacao'
         return 'nenhuma'
     }
 }
