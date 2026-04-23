@@ -2,7 +2,7 @@
 
 ## 2026-04-23 14:33 (America/Cuiaba)
 - Branch: `codex/railway-sandbox-provider-fix`
-- PR: `PENDING`
+- PR: `https://github.com/brunolimaff-jpg/chatbot/pull/4`
 
 ### Mudancas implementadas
 - Correcao do crash em `CHATBOT_CHANNEL_MODE=sandbox` substituindo `TestTool.TestProvider` por provider sandbox proprio com `initVendor()` valido.
