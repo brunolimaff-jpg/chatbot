@@ -15,6 +15,8 @@ import { normalizeForMatch } from './shared/text-normalizer.ts'
 
 const PORT = process.env.PORT ?? 3008
 const HANDOFF_WHATSAPP_NUMBER = process.env.HANDOFF_WHATSAPP_NUMBER ?? '65981506458'
+const WHATSAPP_USE_PAIRING_CODE = (process.env.WHATSAPP_USE_PAIRING_CODE ?? 'false').toLowerCase() === 'true'
+const WHATSAPP_PAIRING_PHONE = process.env.WHATSAPP_PAIRING_PHONE ?? null
 
 const FLOW_ERROR_MESSAGE = [
     'Tive uma instabilidade ao processar sua solicitacao.',
@@ -243,6 +245,8 @@ const main = async () => {
 
     const adapterProvider = createProvider(Provider, {
         version: [2, 3000, 1035824857],
+        usePairingCode: WHATSAPP_USE_PAIRING_CODE,
+        phoneNumber: WHATSAPP_PAIRING_PHONE,
     })
     handoffGateway.setProvider(adapterProvider)
     const adapterDB = new Database()
