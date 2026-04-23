@@ -8,13 +8,16 @@
     "start": "node ./dist/app.js",
     "lint": "eslint . --no-ignore",
     "test": "tsx --test tests/**/*.test.ts",
+    "check:structure": "node ./scripts/check-structure.mjs",
     "dev": "npm run lint && nodemon --signal SIGKILL  ./src/app.ts",
     "build": "npx rollup -c"
   },
   "keywords": [],
   "dependencies": {
     "@builderbot/bot": "1.4.1",
-    "@builderbot/provider-baileys": "1.4.1"
+    "@builderbot/provider-baileys": "1.4.1",
+    "pg": "^8.16.3",
+    "redis": "^5.10.0"
   },
   "devDependencies": {
     "@types/node": "^25.0.0",

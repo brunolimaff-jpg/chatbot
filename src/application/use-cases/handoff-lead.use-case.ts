@@ -13,21 +13,7 @@ export class HandoffLeadUseCase {
             throw new Error('Lead not found')
         }
 
-        const payload = {
-            leadId: lead.id,
-            phoneNumber: lead.phoneNumber,
-            name: lead.name,
-            objective: lead.objective,
-            preferredWindow: lead.preferredWindow,
-            interest: lead.interest,
-            temperature: lead.temperature,
-            qualificationScore: lead.qualificationScore,
-            risk: lead.risk,
-            consent: lead.consent,
-            summary: lead.aiSummary,
-            reason: input?.reason ?? 'qualificacao_concluida',
-            requestedBy: input?.requestedBy ?? 'flow',
-        }
+        const payload = this.buildPayload(lead, input)
 
         const handoff = await retry(() => this.handoffGateway.dispatch(payload), {
             attempts: 3,
@@ -45,6 +31,25 @@ export class HandoffLeadUseCase {
         return {
             lead: updatedLead,
             handoff,
+        }
+    }
+
+    buildPayload(lead, input) {
+        return {
+            leadId: lead.id,
+            phoneNumber: lead.phoneNumber,
+            name: lead.name,
+            objective: lead.objective,
+            preferredWindow: lead.preferredWindow,
+            interest: lead.interest,
+            temperature: lead.temperature,
+            qualificationScore: lead.qualificationScore,
+            risk: lead.risk,
+            consent: lead.consent,
+            scorecard: lead.scorecard,
+            summary: lead.aiSummary,
+            reason: input?.reason ?? 'qualificacao_concluida',
+            requestedBy: input?.requestedBy ?? 'flow',
         }
     }
 

@@ -18,6 +18,35 @@
   </a>
 </p>
 
+## Runtime Modes
+
+This project supports two channel modes:
+
+- `CHATBOT_CHANNEL_MODE=whatsapp`: connects to Baileys WhatsApp provider.
+- `CHATBOT_CHANNEL_MODE=sandbox`: does not connect to WhatsApp and enables local/online flow simulation.
+
+### Environment Variables
+
+- `PORT`: API/server port (default `3008`)
+- `CHATBOT_CHANNEL_MODE`: `whatsapp` or `sandbox`
+- `HANDOFF_WHATSAPP_NUMBER`: human handoff destination
+- `WHATSAPP_USE_PAIRING_CODE`: `true` or `false`
+- `WHATSAPP_PAIRING_PHONE`: phone used for pairing code mode
+- `DATABASE_URL` (optional): Postgres persistence for leads
+- `REDIS_URL` (optional): Redis persistence for sessions/idempotency
+
+### Sandbox Endpoints
+
+- `POST /v1/simulate/message`
+- `POST /v1/simulate/reset`
+- `GET /v1/simulate/session`
+
+All API errors use:
+
+```json
+{ "status": "error", "message": "text", "code": "ERROR_CODE" }
+```
+
 
 ## Getting Started
 
