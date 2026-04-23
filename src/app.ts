@@ -1,4 +1,6 @@
-import { createBot, createProvider, MemoryDB as Database, TestTool } from '@builderbot/bot'
+import 'dotenv/config'
+
+import { createBot, createProvider, MemoryDB as Database } from '@builderbot/bot'
 import { BaileysProvider as WhatsAppProvider } from '@builderbot/provider-baileys'
 
 import { createRuntimeContext } from './bootstrap/create-runtime-context.ts'
@@ -7,6 +9,7 @@ import { buildSandboxNoopFlow } from './flows/sandbox-noop-flow.ts'
 import { buildWhatsAppFlow } from './flows/whatsapp-flow.ts'
 import { registerCoreRoutes } from './http/register-core-routes.ts'
 import { registerSandboxRoutes } from './http/register-sandbox-routes.ts'
+import { SandboxProvider } from './infrastructure/providers/sandbox.provider.ts'
 
 const buildWhatsAppProviderConfig = (env) => ({
     ...(Array.isArray(env.whatsappProtocolVersion) ? { version: env.whatsappProtocolVersion } : {}),
@@ -16,7 +19,7 @@ const buildWhatsAppProviderConfig = (env) => ({
 
 const createProviderByMode = (env) => {
     if (env.channelMode === CHANNEL_MODE.SANDBOX) {
-        return createProvider(TestTool.TestProvider, { name: 'sandbox' })
+        return createProvider(SandboxProvider, { name: 'sandbox' })
     }
 
     return createProvider(WhatsAppProvider, buildWhatsAppProviderConfig(env))
