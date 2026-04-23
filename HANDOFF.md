@@ -2,7 +2,7 @@
 
 ## 2026-04-23 16:10 (America/Cuiaba)
 - Branch: `codex/pr5-review-followup`
-- PR: `to-create`
+- PR: `https://github.com/brunolimaff-jpg/chatbot/pull/6`
 
 ### Mudancas implementadas
 - Correcao da rota de playground sandbox para usar `handleCtx`, evitando bypass do middleware de contexto HTTP do BuilderBot.
@@ -24,7 +24,7 @@
 3. Enderecar pendencia separada de semantica de reset de sessao em `/v1/simulate/reset`.
 
 ### Pendencias abertas
-- Atualizar este item com o link final do PR apos abertura no GitHub.
+- Nenhuma para este ciclo de follow-up.
 
 ## 2026-04-23 15:17 (America/Cuiaba)
 - Branch: `codex/sandbox-chat-playground`
