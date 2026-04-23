@@ -1,12 +1,12 @@
 import { createLead, LEAD_STATUS, normalizePhoneNumber, sanitizeText } from '../../domain/entities/lead.ts'
 import { createScorecard, normalizeObjection, normalizeUrgency } from '../../domain/entities/scorecard.ts'
 
-export class IntakeLeadUseCase {
-    constructor({ leadRepository, aiAssistant, safetyGuardService, leadQualificationService }) {
+export class QualifyLeadUseCase {
+    constructor({ leadRepository, aiAssistant, leadQualificationService, safetyGuardService }) {
         this.leadRepository = leadRepository
         this.aiAssistant = aiAssistant
-        this.safetyGuardService = safetyGuardService
         this.leadQualificationService = leadQualificationService
+        this.safetyGuardService = safetyGuardService
     }
 
     async execute(input) {
@@ -15,7 +15,8 @@ export class IntakeLeadUseCase {
 
         const aiAssessment = await this.aiAssistant.assessText(normalized.objective)
         const risk = this.safetyGuardService.evaluateText(normalized.objective)
-        const scorecard = this.buildScorecard(aiAssessment)
+        const scorecard = this.resolveScorecard(input, aiAssessment)
+
         const qualification = this.leadQualificationService.scoreLead({
             consent: normalized.consent,
             objective: normalized.objective,
@@ -34,16 +35,17 @@ export class IntakeLeadUseCase {
             source: normalized.source,
             interest: aiAssessment.interest,
             aiSummary: aiAssessment.summary,
-            objectionTag: aiAssessment.objectionTag,
+            objectionTag: scorecard.objection,
             qualificationScore: qualification.score,
             temperature: qualification.temperature,
             risk,
             status: risk.highRisk ? LEAD_STATUS.BLOCKED : LEAD_STATUS.QUALIFIED,
             scorecard,
+            conversationId: normalized.conversationId,
         })
 
         await this.leadRepository.save(lead)
-        return this.buildResult(lead, aiAssessment, risk)
+        return this.buildResult({ lead, aiAssessment, risk, qualification })
     }
 
     normalizeInput(input) {
@@ -52,8 +54,9 @@ export class IntakeLeadUseCase {
             name: sanitizeText(input?.name),
             objective: sanitizeText(input?.objective),
             preferredWindow: sanitizeText(input?.preferredWindow || 'nao informado'),
-            consent: Boolean(input?.consent),
+            consent: input?.consent === true,
             source: input?.source ?? 'chat',
+            conversationId: input?.conversationId ?? null,
         }
     }
 
@@ -61,21 +64,23 @@ export class IntakeLeadUseCase {
         if (!input.phoneNumber) throw new Error('phoneNumber is required')
         if (!input.name) throw new Error('name is required')
         if (!input.objective) throw new Error('objective is required')
+        if (!input.consent) throw new Error('consent is required')
     }
 
-    buildScorecard(aiAssessment) {
+    resolveScorecard(input, aiAssessment) {
         return createScorecard({
-            urgency: normalizeUrgency(aiAssessment?.urgency),
-            objection: normalizeObjection(aiAssessment?.objectionTag),
+            urgency: normalizeUrgency(input?.scorecard?.urgency ?? aiAssessment.urgency),
+            objection: normalizeObjection(input?.scorecard?.objection ?? aiAssessment.objectionTag),
         })
     }
 
-    buildResult(lead, aiAssessment, risk) {
+    buildResult(payload) {
         return {
-            lead,
-            aiAssessment,
-            risk,
-            nextAction: risk.highRisk ? 'handoff_imediato' : 'qualificar_e_agendar',
+            lead: payload.lead,
+            aiAssessment: payload.aiAssessment,
+            risk: payload.risk,
+            qualification: payload.qualification,
+            nextAction: payload.risk.highRisk ? 'handoff_imediato' : 'qualificar_e_encaminhar',
         }
     }
 }

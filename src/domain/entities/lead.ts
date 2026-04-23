@@ -1,4 +1,6 @@
 import { randomUUID } from 'node:crypto'
+import { createConsent } from './consent.ts'
+import { createScorecard, SCORECARD_OBJECTION, SCORECARD_URGENCY } from './scorecard.ts'
 
 export const LEAD_STATUS = Object.freeze({
     NEW: 'novo',
@@ -29,6 +31,37 @@ export const sanitizeText = (value = '') => String(value).trim().replace(/\s+/g,
 
 export const nowIso = () => new Date().toISOString()
 
+export const isSpecificObjective = (objective = '', interest = LEAD_INTEREST.OTHER) => {
+    const normalizedObjective = sanitizeText(objective).toLowerCase()
+    if (!normalizedObjective) return false
+    if (interest === LEAD_INTEREST.GENERAL_EVALUATION || interest === LEAD_INTEREST.OTHER) return false
+    if (normalizedObjective.length < 10) return false
+    return true
+}
+
+export const hasSpecificWindow = (windowText = '') => {
+    const normalized = sanitizeText(windowText).toLowerCase()
+    if (!normalized) return false
+
+    const specificTerms = [
+        'hoje',
+        'amanha',
+        'segunda',
+        'terca',
+        'quarta',
+        'quinta',
+        'sexta',
+        'sabado',
+        'domingo',
+        'manha',
+        'tarde',
+        'noite',
+        ':',
+    ]
+
+    return specificTerms.some((term) => normalized.includes(term))
+}
+
 export const createLead = ({
     phoneNumber,
     name,
@@ -43,6 +76,8 @@ export const createLead = ({
     temperature,
     risk,
     status,
+    scorecard,
+    conversationId,
 }) => {
     const timestamp = nowIso()
 
@@ -53,17 +88,22 @@ export const createLead = ({
         name: sanitizeText(name),
         objective: sanitizeText(objective),
         preferredWindow: sanitizeText(preferredWindow),
+        conversationId: conversationId ?? null,
         interest,
         aiSummary,
         objectionTag,
+        scorecard: createScorecard({
+            urgency: scorecard?.urgency ?? SCORECARD_URGENCY.LOW,
+            objection: scorecard?.objection ?? SCORECARD_OBJECTION.NONE,
+        }),
         qualificationScore,
         temperature,
         risk,
-        consent: {
-            granted: Boolean(consent),
+        consent: createConsent({
+            granted: consent,
             source: source ?? 'chat',
-            grantedAt: consent ? timestamp : null,
-        },
+            grantedAt: timestamp,
+        }),
         status,
         createdAt: timestamp,
         updatedAt: timestamp,
