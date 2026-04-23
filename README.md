@@ -47,6 +47,19 @@ All API errors use:
 { "status": "error", "message": "text", "code": "ERROR_CODE" }
 ```
 
+### Execucao facil (Windows)
+
+- Clique duas vezes em `run-chatbot.bat` para escolher o modo:
+  - `1` Sandbox (teste de fluxo sem WhatsApp)
+  - `2` WhatsApp (integracao real)
+- Atalhos diretos:
+  - `run-sandbox.bat`
+  - `run-whatsapp.bat`
+
+Cada launcher define automaticamente o arquivo de ambiente:
+- Sandbox: `.env.sandbox`
+- WhatsApp: `.env.whatsapp`
+
 
 ## Getting Started
 
