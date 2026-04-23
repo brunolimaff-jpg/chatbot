@@ -40,6 +40,7 @@ This project supports two channel modes:
 - `POST /v1/simulate/message`
 - `POST /v1/simulate/reset`
 - `GET /v1/simulate/session`
+- `GET /sandbox` (playground web para testar conversa no navegador)
 
 All API errors use:
 

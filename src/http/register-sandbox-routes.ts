@@ -1,4 +1,5 @@
 import { CHANNEL_MODE } from '../config/env.ts'
+import { SANDBOX_CHAT_PAGE } from './sandbox-chat-page.ts'
 import { sendError, sendSuccess } from './http-response.ts'
 
 const asText = (value) => String(value ?? '').trim()
@@ -7,6 +8,17 @@ const ensureSandboxMode = (env, res) => {
     if (env.channelMode === CHANNEL_MODE.SANDBOX) return true
     sendError(res, 409, 'sandbox routes are available only in CHATBOT_CHANNEL_MODE=sandbox', 'SANDBOX_DISABLED')
     return false
+}
+
+const sendHtml = (res, html) => {
+    res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' })
+    res.end(html)
+}
+
+const registerSandboxPlaygroundRoute = ({ provider }) => {
+    const renderPage = (_req, res) => sendHtml(res, SANDBOX_CHAT_PAGE)
+    provider.server.get('/sandbox', renderPage)
+    provider.server.get('/', renderPage)
 }
 
 const registerSimulateMessageRoute = ({ provider, handleCtx, context, env }) => {
@@ -77,6 +89,10 @@ const registerSimulateSessionRoute = ({ provider, handleCtx, context, env }) => 
 }
 
 export const registerSandboxRoutes = ({ provider, handleCtx, context, env }) => {
+    if (env.channelMode === CHANNEL_MODE.SANDBOX) {
+        registerSandboxPlaygroundRoute({ provider })
+    }
+
     registerSimulateMessageRoute({ provider, handleCtx, context, env })
     registerSimulateResetRoute({ provider, handleCtx, context, env })
     registerSimulateSessionRoute({ provider, handleCtx, context, env })
