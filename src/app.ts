@@ -12,12 +12,15 @@ import { InMemoryLeadRepository } from './infrastructure/repositories/in-memory-
 import { retry } from './shared/retry.ts'
 
 const PORT = process.env.PORT ?? 3008
+const HANDOFF_WHATSAPP_NUMBER = process.env.HANDOFF_WHATSAPP_NUMBER ?? '65981506458'
 
 const leadRepository = new InMemoryLeadRepository()
 const aiAssistant = new HeuristicAiAssistant()
 const safetyGuardService = new SafetyGuardService()
 const leadQualificationService = new LeadQualificationService()
-const handoffGateway = new ConsoleHandoffGateway()
+const handoffGateway = new ConsoleHandoffGateway({
+    targetNumber: HANDOFF_WHATSAPP_NUMBER,
+})
 
 const intakeLeadUseCase = new IntakeLeadUseCase({
     leadRepository,
@@ -231,6 +234,7 @@ const main = async () => {
     const adapterProvider = createProvider(Provider, {
         version: [2, 3000, 1035824857],
     })
+    handoffGateway.setProvider(adapterProvider)
     const adapterDB = new Database()
 
     const { handleCtx, httpServer } = await createBot({
