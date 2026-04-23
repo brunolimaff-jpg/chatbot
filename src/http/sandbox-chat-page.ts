@@ -121,12 +121,21 @@ export const SANDBOX_CHAT_PAGE = `<!doctype html>
     };
 
     const postJson = async (url, body) => {
-      const res = await fetch(url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body)
-      });
-      return res.json();
+      try {
+        const res = await fetch(url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body)
+        });
+        const data = await res.json();
+        if (!res.ok && (!data || typeof data !== 'object')) {
+          return { status: 'error', message: 'Falha na requisicao.' };
+        }
+        return data;
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Network error';
+        return { status: 'error', message };
+      }
     };
 
     document.getElementById('sendBtn').onclick = async () => {
