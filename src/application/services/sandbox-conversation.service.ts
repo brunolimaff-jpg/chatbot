@@ -32,7 +32,7 @@ export class SandboxConversationService {
         }
 
         if (this.policyService.isExitCommand(message)) {
-            return this.closeSession(session, [copy.close])
+            return this.closeSession(session, [conversationCopy.close])
         }
 
         return this.routeByState(session, message)

@@ -2,13 +2,42 @@ import { Pool } from 'pg'
 
 let sharedPool = null
 
-export const buildPostgresPool = async (databaseUrl = process.env.DATABASE_URL) => {
+const isLocalDatabase = (databaseUrl = '') => {
+    const normalized = String(databaseUrl ?? '').toLowerCase()
+    return normalized.includes('localhost') || normalized.includes('127.0.0.1')
+}
+
+const resolveSslEnabled = ({ databaseUrl, sslMode }) => {
+    if (sslMode === 'disable') return false
+    if (sslMode === 'require') return true
+    if (databaseUrl.includes('sslmode=disable')) return false
+    if (databaseUrl.includes('sslmode=require') || databaseUrl.includes('ssl=true')) return true
+    return !isLocalDatabase(databaseUrl)
+}
+
+const buildSslConfig = (options) => {
+    const sslEnabled = resolveSslEnabled(options)
+    if (!sslEnabled) return false
+
+    return {
+        rejectUnauthorized: options.databaseSslRejectUnauthorized,
+        ...(options.databaseSslCa ? { ca: options.databaseSslCa } : {}),
+    }
+}
+
+export const buildPostgresPool = async (options = {}) => {
+    const databaseUrl = options.databaseUrl ?? process.env.DATABASE_URL ?? ''
     if (!databaseUrl) return null
 
     if (!sharedPool) {
         sharedPool = new Pool({
             connectionString: databaseUrl,
-            ssl: databaseUrl.includes('sslmode=disable') ? false : { rejectUnauthorized: false },
+            ssl: buildSslConfig({
+                databaseUrl,
+                sslMode: options.databaseSslMode ?? 'auto',
+                databaseSslRejectUnauthorized: options.databaseSslRejectUnauthorized ?? true,
+                databaseSslCa: options.databaseSslCa ?? '',
+            }),
         })
     }
 

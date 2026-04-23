@@ -20,9 +20,13 @@ export class DispatchHandoffUseCase {
             manualPayload,
             reason: input?.reason,
             requestedBy: input?.requestedBy,
+            targetNumber: input?.targetNumber,
         })
 
-        const handoff = await this.dispatchWithOptionalTarget(payload, input?.targetNumber)
+        const handoff = await retry(() => this.handoffGateway.dispatch(payload), {
+            attempts: 3,
+            delayMs: 600,
+        })
 
         if (!lead) {
             return {
@@ -48,7 +52,7 @@ export class DispatchHandoffUseCase {
         return null
     }
 
-    buildPayload({ lead, manualPayload, reason, requestedBy }) {
+    buildPayload({ lead, manualPayload, reason, requestedBy, targetNumber }) {
         if (manualPayload) return manualPayload
 
         return {
@@ -66,6 +70,7 @@ export class DispatchHandoffUseCase {
             summary: lead.aiSummary,
             reason: reason ?? 'qualificacao_concluida',
             requestedBy: requestedBy ?? 'flow',
+            targetNumber: targetNumber ?? null,
         }
     }
 
@@ -78,31 +83,5 @@ export class DispatchHandoffUseCase {
 
         await this.leadRepository.save(updatedLead)
         return updatedLead
-    }
-
-    async dispatchWithOptionalTarget(payload, targetNumber) {
-        const canSetTarget =
-            typeof this.handoffGateway?.setTargetNumber === 'function' &&
-            typeof targetNumber === 'string' &&
-            targetNumber.trim().length > 0
-
-        if (!canSetTarget) {
-            return retry(() => this.handoffGateway.dispatch(payload), {
-                attempts: 3,
-                delayMs: 600,
-            })
-        }
-
-        const previousTarget = this.handoffGateway.targetNumber
-        this.handoffGateway.setTargetNumber(targetNumber)
-
-        try {
-            return await retry(() => this.handoffGateway.dispatch(payload), {
-                attempts: 3,
-                delayMs: 600,
-            })
-        } finally {
-            this.handoffGateway.setTargetNumber(previousTarget)
-        }
     }
 }

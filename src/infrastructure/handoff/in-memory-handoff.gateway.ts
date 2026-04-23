@@ -11,12 +11,13 @@ export class InMemoryHandoffGateway {
     async dispatch(payload) {
         const handoffId = `sandbox-handoff-${Date.now()}`
         const dispatchedAt = new Date().toISOString()
+        const destination = String(payload?.targetNumber ?? this.targetNumber ?? '').trim() || 'sandbox-human-team'
 
         const handoff = {
             handoffId,
             dispatchedAt,
             channel: 'sandbox',
-            targetNumber: this.targetNumber || 'sandbox-human-team',
+            targetNumber: destination,
             payload,
         }
 

@@ -8,16 +8,18 @@ import { buildWhatsAppFlow } from './flows/whatsapp-flow.ts'
 import { registerCoreRoutes } from './http/register-core-routes.ts'
 import { registerSandboxRoutes } from './http/register-sandbox-routes.ts'
 
+const buildWhatsAppProviderConfig = (env) => ({
+    ...(Array.isArray(env.whatsappProtocolVersion) ? { version: env.whatsappProtocolVersion } : {}),
+    usePairingCode: env.whatsappUsePairingCode,
+    phoneNumber: env.whatsappPairingPhone,
+})
+
 const createProviderByMode = (env) => {
     if (env.channelMode === CHANNEL_MODE.SANDBOX) {
         return createProvider(TestTool.TestProvider, { name: 'sandbox' })
     }
 
-    return createProvider(WhatsAppProvider, {
-        version: [2, 3000, 1035824857],
-        usePairingCode: env.whatsappUsePairingCode,
-        phoneNumber: env.whatsappPairingPhone,
-    })
+    return createProvider(WhatsAppProvider, buildWhatsAppProviderConfig(env))
 }
 
 const createFlowByMode = (env, context) => {

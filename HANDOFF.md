@@ -1,5 +1,33 @@
 # HANDOFF
 
+## 2026-04-23 14:10 (America/Cuiaba)
+- Branch: `codex/clinic-chatbot-mvp-pr`
+- PR: `https://github.com/brunolimaff-jpg/chatbot/pull/3`
+
+### Mudancas implementadas
+- Correcao de erro de referencia no sandbox (`copy.close` -> `conversationCopy.close`).
+- Remocao de mutacao de estado compartilhado no handoff para evitar risco de concorrencia; `targetNumber` passou a ser carregado por payload.
+- Atualizacao do `scripts/check-structure.mjs` para analise de funcoes via AST TypeScript (sem heuristica por regex/braces).
+- Externalizacao opcional da versao do protocolo WhatsApp (`WHATSAPP_PROTOCOL_VERSION`) com fallback para versao padrao do provider.
+- Endurecimento da configuracao SSL do Postgres com controles por env:
+  - `DATABASE_SSL_MODE=auto|require|disable`
+  - `DATABASE_SSL_REJECT_UNAUTHORIZED=true|false`
+  - `DATABASE_SSL_CA=<ca-pem>`
+- Refino do fluxo WhatsApp para reduzir tamanho de funcoes e manter limite anti-god.
+
+### Riscos e impactos
+- Mudanca no comportamento SSL do Postgres pode exigir ajuste de variaveis em ambientes com certificados self-signed.
+- Fluxo de handoff agora depende do destino resolvido por payload/gateway; testes de regressao de roteamento devem ser mantidos.
+
+### Proximos passos priorizados
+1. Responder threads do PR #3 com referencia ao commit de correcao.
+2. Validar em Railway com `DATABASE_SSL_MODE` e `DATABASE_SSL_REJECT_UNAUTHORIZED` compativeis com o ambiente real.
+3. Adicionar teste unitario cobrindo override de `targetNumber` no `DispatchHandoffUseCase`.
+
+### Pendencias abertas
+- Definir valor padrao de `WHATSAPP_PROTOCOL_VERSION` por ambiente (fixo via env ou auto sempre).
+- Avaliar adicao de CA dedicada via `DATABASE_SSL_CA` em producao.
+
 ## 2026-04-23 14:30 (America/Cuiaba)
 - Branch: `codex/clinic-chatbot-mvp-pr`
 - PR: `https://github.com/brunolimaff-jpg/chatbot/pull/2`

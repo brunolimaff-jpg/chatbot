@@ -52,7 +52,8 @@ export class ConsoleHandoffGateway {
             throw new Error('Handoff provider is not configured')
         }
 
-        if (!this.targetNumber) {
+        const destination = normalizeBrazilNumber(payload?.targetNumber ?? this.targetNumber)
+        if (!destination) {
             throw new Error('Handoff target number is not configured')
         }
 
@@ -60,13 +61,13 @@ export class ConsoleHandoffGateway {
         const dispatchedAt = new Date().toISOString()
         const message = this.buildMessage({ handoffId, dispatchedAt, payload })
 
-        await this.provider.sendMessage(this.targetNumber, message)
+        await this.provider.sendMessage(destination, message)
 
         return {
             handoffId,
             dispatchedAt,
             channel: 'whatsapp',
-            targetNumber: this.targetNumber,
+            targetNumber: destination,
         }
     }
 }

@@ -26,7 +26,12 @@ const createLeadRepository = async (env) => {
     if (!env.databaseUrl) return new InMemoryLeadRepository()
 
     try {
-        const postgresPool = await buildPostgresPool(env.databaseUrl)
+        const postgresPool = await buildPostgresPool({
+            databaseUrl: env.databaseUrl,
+            databaseSslMode: env.databaseSslMode,
+            databaseSslRejectUnauthorized: env.databaseSslRejectUnauthorized,
+            databaseSslCa: env.databaseSslCa,
+        })
         await ensureLeadTable(postgresPool)
         return new PostgresLeadRepository({ pool: postgresPool })
     } catch (error) {

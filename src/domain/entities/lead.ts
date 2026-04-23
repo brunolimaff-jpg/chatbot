@@ -62,49 +62,44 @@ export const hasSpecificWindow = (windowText = '') => {
     return specificTerms.some((term) => normalized.includes(term))
 }
 
-export const createLead = ({
-    phoneNumber,
-    name,
-    objective,
-    preferredWindow,
-    consent,
-    source,
-    interest,
-    aiSummary,
-    objectionTag,
-    qualificationScore,
-    temperature,
-    risk,
-    status,
-    scorecard,
-    conversationId,
-}) => {
+const buildLeadScorecard = (scorecard) =>
+    createScorecard({
+        urgency: scorecard?.urgency ?? SCORECARD_URGENCY.LOW,
+        objection: scorecard?.objection ?? SCORECARD_OBJECTION.NONE,
+    })
+
+const buildLeadConsent = (consent, source, timestamp) =>
+    createConsent({
+        granted: consent,
+        source: source ?? 'chat',
+        grantedAt: timestamp,
+    })
+
+const buildNormalizedLeadContent = ({ phoneNumber, name, objective, preferredWindow, conversationId }) => ({
+    phoneNumber: normalizePhoneNumber(phoneNumber),
+    channel: 'whatsapp',
+    name: sanitizeText(name),
+    objective: sanitizeText(objective),
+    preferredWindow: sanitizeText(preferredWindow),
+    conversationId: conversationId ?? null,
+})
+
+export const createLead = (input) => {
     const timestamp = nowIso()
+    const normalized = buildNormalizedLeadContent(input)
 
     return {
         id: randomUUID(),
-        phoneNumber: normalizePhoneNumber(phoneNumber),
-        channel: 'whatsapp',
-        name: sanitizeText(name),
-        objective: sanitizeText(objective),
-        preferredWindow: sanitizeText(preferredWindow),
-        conversationId: conversationId ?? null,
-        interest,
-        aiSummary,
-        objectionTag,
-        scorecard: createScorecard({
-            urgency: scorecard?.urgency ?? SCORECARD_URGENCY.LOW,
-            objection: scorecard?.objection ?? SCORECARD_OBJECTION.NONE,
-        }),
-        qualificationScore,
-        temperature,
-        risk,
-        consent: createConsent({
-            granted: consent,
-            source: source ?? 'chat',
-            grantedAt: timestamp,
-        }),
-        status,
+        ...normalized,
+        interest: input.interest,
+        aiSummary: input.aiSummary,
+        objectionTag: input.objectionTag,
+        scorecard: buildLeadScorecard(input.scorecard),
+        qualificationScore: input.qualificationScore,
+        temperature: input.temperature,
+        risk: input.risk,
+        consent: buildLeadConsent(input.consent, input.source, timestamp),
+        status: input.status,
         createdAt: timestamp,
         updatedAt: timestamp,
     }
