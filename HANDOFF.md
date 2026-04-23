@@ -1,5 +1,31 @@
 # HANDOFF
 
+## 2026-04-23 16:10 (America/Cuiaba)
+- Branch: `codex/pr5-review-followup`
+- PR: `https://github.com/brunolimaff-jpg/chatbot/pull/6`
+
+### Mudancas implementadas
+- Correcao da rota de playground sandbox para usar `handleCtx`, evitando bypass do middleware de contexto HTTP do BuilderBot.
+- Ajuste de assinatura e chamada de `registerSandboxPlaygroundRoute` para receber `{ provider, handleCtx }`.
+- Hardening de `postJson` na pagina sandbox com tratamento de falha de rede e erro de parse, retornando payload padronizado de erro para o front.
+- Validacao local executada com sucesso:
+  - `npm run check:structure`
+  - `npm run lint`
+  - `npm run test`
+  - `npm run build`
+
+### Riscos e impactos
+- Baixo risco funcional: alteracoes restritas ao modo `sandbox` e ao frontend de teste.
+- Sem impacto esperado no modo `whatsapp` e sem mudanca de contratos de API.
+
+### Proximos passos priorizados
+1. Abrir PR de follow-up para os comentarios pendentes da PR #5.
+2. Após merge, redeploy no Railway e validar `GET /sandbox` e `GET /` em `CHATBOT_CHANNEL_MODE=sandbox`.
+3. Enderecar pendencia separada de semantica de reset de sessao em `/v1/simulate/reset`.
+
+### Pendencias abertas
+- Nenhuma para este ciclo de follow-up.
+
 ## 2026-04-23 15:17 (America/Cuiaba)
 - Branch: `codex/sandbox-chat-playground`
 - PR: `https://github.com/brunolimaff-jpg/chatbot/pull/5`

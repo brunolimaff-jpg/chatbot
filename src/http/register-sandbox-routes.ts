@@ -15,8 +15,8 @@ const sendHtml = (res, html) => {
     res.end(html)
 }
 
-const registerSandboxPlaygroundRoute = ({ provider }) => {
-    const renderPage = (_req, res) => sendHtml(res, SANDBOX_CHAT_PAGE)
+const registerSandboxPlaygroundRoute = ({ provider, handleCtx }) => {
+    const renderPage = handleCtx(async (_bot, _req, res) => sendHtml(res, SANDBOX_CHAT_PAGE))
     provider.server.get('/sandbox', renderPage)
     provider.server.get('/', renderPage)
 }
@@ -90,7 +90,7 @@ const registerSimulateSessionRoute = ({ provider, handleCtx, context, env }) => 
 
 export const registerSandboxRoutes = ({ provider, handleCtx, context, env }) => {
     if (env.channelMode === CHANNEL_MODE.SANDBOX) {
-        registerSandboxPlaygroundRoute({ provider })
+        registerSandboxPlaygroundRoute({ provider, handleCtx })
     }
 
     registerSimulateMessageRoute({ provider, handleCtx, context, env })
