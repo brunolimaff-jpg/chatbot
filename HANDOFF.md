@@ -1,5 +1,28 @@
 # HANDOFF
 
+## 2026-04-23 15:17 (America/Cuiaba)
+- Branch: `codex/sandbox-chat-playground`
+- PR: `https://github.com/brunolimaff-jpg/chatbot/pull/5`
+
+### Mudancas implementadas
+- Adicao de playground web para teste de conversa em modo sandbox.
+- Nova rota `GET /sandbox` para interface de chat no navegador.
+- Em `CHATBOT_CHANNEL_MODE=sandbox`, a rota `GET /` tambem passa a servir o playground para facilitar testes.
+- Inclusao de `src/http/sandbox-chat-page.ts` com UI de envio de mensagens para `/v1/simulate/message` e reset via `/v1/simulate/reset`.
+- Atualizacao de `README.md` com documentacao da rota de playground.
+
+### Riscos e impactos
+- A rota raiz `GET /` em sandbox deixa de retornar `Not Found` e passa a abrir a UI de teste.
+- Nenhuma alteracao de comportamento para modo `whatsapp`.
+
+### Proximos passos priorizados
+1. Deploy em sandbox no Railway e validar uso manual no navegador.
+2. Confirmar com time se a rota `/` deve continuar apontando para playground em sandbox ou somente `/sandbox`.
+3. Ajustar endpoint de reset para realmente remover sessao persistida (pendencia conhecida).
+
+### Pendencias abertas
+- Corrigir a semantica do `POST /v1/simulate/reset` (hoje retorna sucesso, mas sessao pode permanecer).
+
 ## 2026-04-23 14:33 (America/Cuiaba)
 - Branch: `codex/railway-sandbox-provider-fix`
 - PR: `https://github.com/brunolimaff-jpg/chatbot/pull/4`
