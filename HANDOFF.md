@@ -1,5 +1,35 @@
 # HANDOFF
 
+## 2026-04-23 14:33 (America/Cuiaba)
+- Branch: `codex/railway-sandbox-provider-fix`
+- PR: `PENDING`
+
+### Mudancas implementadas
+- Correcao do crash em `CHATBOT_CHANNEL_MODE=sandbox` substituindo `TestTool.TestProvider` por provider sandbox proprio com `initVendor()` valido.
+- Adicao de `src/infrastructure/providers/sandbox.provider.ts` com vendor baseado em `EventEmitter`.
+- Inclusao de carregamento automatico de variaveis via `dotenv/config`.
+- Inclusao de launchers Windows para execucao simplificada:
+  - `run-chatbot.bat`
+  - `run-sandbox.bat`
+  - `run-whatsapp.bat`
+- Adicao dos perfis de ambiente:
+  - `.env.example`
+  - `.env.sandbox`
+  - `.env.whatsapp`
+- Atualizacao de `README.md` com instrucoes de execucao facil no Windows.
+
+### Riscos e impactos
+- Modo `sandbox` deixa de depender do provider de teste interno do BuilderBot, reduzindo risco de crash no Railway.
+- Modo `whatsapp` permanece sem alteracao funcional de fluxo.
+
+### Proximos passos priorizados
+1. Ajustar a variavel `CHATBOT_CHANNEL_MODE` no Railway por ambiente (`sandbox` homologacao, `whatsapp` producao).
+2. Validar `GET /health` e `POST /v1/simulate/message` no ambiente de homologacao.
+3. Considerar fixar Node `20.x` no Railway para padrao LTS.
+
+### Pendencias abertas
+- Confirmar se os arquivos `.bat` devem permanecer no repositorio ou migrar para pasta `scripts/`.
+
 ## 2026-04-23 14:10 (America/Cuiaba)
 - Branch: `codex/clinic-chatbot-mvp-pr`
 - PR: `https://github.com/brunolimaff-jpg/chatbot/pull/3`
