@@ -2,7 +2,7 @@
 
 ## 2026-04-23 15:17 (America/Cuiaba)
 - Branch: `codex/sandbox-chat-playground`
-- PR: `PENDING`
+- PR: `https://github.com/brunolimaff-jpg/chatbot/pull/5`
 
 ### Mudancas implementadas
 - Adicao de playground web para teste de conversa em modo sandbox.
