@@ -1,8 +1,11 @@
 import { randomUUID } from 'node:crypto'
-
-import { nowIso, normalizePhoneNumber, sanitizeText } from './lead.ts'
+import { normalizePhoneNumber, nowIso, sanitizeText } from './lead.ts'
 
 export const CONVERSATION_STATE = Object.freeze({
+    DISCOVERY: 'DISCOVERY',
+    QUALIFYING: 'QUALIFYING',
+    READY_FOR_HANDOFF: 'READY_FOR_HANDOFF',
+    CLOSED: 'CLOSED',
     ENTRY: 'ENTRY',
     INTENT_CONFIRM: 'INTENT_CONFIRM',
     NAME: 'NAME',
@@ -11,89 +14,85 @@ export const CONVERSATION_STATE = Object.freeze({
     SCORECARD_OBJECTION: 'SCORECARD_OBJECTION',
     PREFERRED_WINDOW: 'PREFERRED_WINDOW',
     LGPD_CONSENT: 'LGPD_CONSENT',
-    SUMMARY_CONFIRM: 'SUMMARY_CONFIRM',
-    HANDOFF_SENT: 'HANDOFF_SENT',
-    CLOSED: 'CLOSED',
 })
 
-export const SESSION_EXPIRATION_MS = 24 * 60 * 60 * 1000
+export const createEmptyLeadDraft = () => ({
+    name: null,
+    objective: null,
+    service: null,
+    bodyArea: null,
+    skinToneOrPhototype: null,
+    budgetConcern: null,
+    budgetPreference: null,
+    preferredWindow: null,
+    objection: null,
+    urgency: null,
+    expectationRisk: null,
+    territoryHint: null,
+    userNeighborhood: null,
+    sourceCampaign: null,
+    sourceAd: null,
+    sourceUrl: null,
+    handoffSummary: null,
+    qualificationReasons: [],
+    nextSuggestedAction: null,
+    qualificationMissing: [],
+    consent: null,
+})
 
-const sanitizeOptional = (value) => {
-    const text = sanitizeText(value ?? '')
-    return text || null
-}
-
-export const createConversationSession = ({ phoneNumber, state = CONVERSATION_STATE.ENTRY }) => {
+export const createConversationSession = ({ phoneNumber }) => {
     const timestamp = nowIso()
 
     return {
         id: randomUUID(),
         phoneNumber: normalizePhoneNumber(phoneNumber),
-        state,
-        leadDraft: {
-            name: null,
-            objective: null,
-            preferredWindow: null,
-            urgency: null,
-            objection: null,
-            consent: null,
-        },
-        invalidAttempts: {},
+        state: CONVERSATION_STATE.DISCOVERY,
+        leadDraft: createEmptyLeadDraft(),
+        history: [],
+        transientHistory: [],
+        lastNlu: null,
+        leadId: null,
+        handoffId: null,
         createdAt: timestamp,
         updatedAt: timestamp,
-        expiresAt: new Date(Date.now() + SESSION_EXPIRATION_MS).toISOString(),
     }
 }
 
-export const updateSessionState = (session, state) => ({
+export const appendTransientMessage = (session, role, content) => ({
     ...session,
-    state,
+    transientHistory: [
+        ...session.transientHistory,
+        {
+            role,
+            content: sanitizeText(content),
+            at: nowIso(),
+        },
+    ],
     updatedAt: nowIso(),
-    expiresAt: new Date(Date.now() + SESSION_EXPIRATION_MS).toISOString(),
 })
 
-export const mergeSessionLeadDraft = (session, payload = {}) => ({
+export const appendBotMessages = (session, messages = []) =>
+    messages.reduce((current, message) => appendTransientMessage(current, 'assistant', message), session)
+
+export const updateSession = (session, patch = {}) => ({
     ...session,
+    ...patch,
     leadDraft: {
         ...session.leadDraft,
-        ...(payload.name !== undefined ? { name: sanitizeOptional(payload.name) } : {}),
-        ...(payload.objective !== undefined ? { objective: sanitizeOptional(payload.objective) } : {}),
-        ...(payload.preferredWindow !== undefined ? { preferredWindow: sanitizeOptional(payload.preferredWindow) } : {}),
-        ...(payload.urgency !== undefined ? { urgency: sanitizeOptional(payload.urgency) } : {}),
-        ...(payload.objection !== undefined ? { objection: sanitizeOptional(payload.objection) } : {}),
-        ...(payload.consent !== undefined ? { consent: payload.consent } : {}),
+        ...(patch.leadDraft ?? {}),
     },
     updatedAt: nowIso(),
-    expiresAt: new Date(Date.now() + SESSION_EXPIRATION_MS).toISOString(),
 })
 
-export const registerInvalidAttempt = (session, state) => {
-    const current = Number(session.invalidAttempts?.[state] ?? 0)
+export const persistConsentedHistory = (session) =>
+    updateSession(session, {
+        history: [...session.history, ...session.transientHistory],
+        transientHistory: [],
+    })
 
-    return {
-        ...session,
-        invalidAttempts: {
-            ...session.invalidAttempts,
-            [state]: current + 1,
-        },
-        updatedAt: nowIso(),
-        expiresAt: new Date(Date.now() + SESSION_EXPIRATION_MS).toISOString(),
-    }
-}
-
-export const clearStateInvalidAttempts = (session, state) => ({
-    ...session,
-    invalidAttempts: {
-        ...session.invalidAttempts,
-        [state]: 0,
-    },
-    updatedAt: nowIso(),
-    expiresAt: new Date(Date.now() + SESSION_EXPIRATION_MS).toISOString(),
-})
-
-export const isSessionExpired = (session) => {
-    if (!session?.updatedAt) return true
-    const updatedAtMs = new Date(session.updatedAt).getTime()
-    if (Number.isNaN(updatedAtMs)) return true
-    return Date.now() - updatedAtMs > SESSION_EXPIRATION_MS
-}
+export const clearConversationData = (session) =>
+    updateSession(session, {
+        leadDraft: createEmptyLeadDraft(),
+        history: [],
+        transientHistory: [],
+    })

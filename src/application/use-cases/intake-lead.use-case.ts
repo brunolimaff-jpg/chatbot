@@ -1,5 +1,4 @@
 import { createLead, LEAD_STATUS, normalizePhoneNumber, sanitizeText } from '../../domain/entities/lead.ts'
-import { createScorecard, normalizeObjection, normalizeUrgency } from '../../domain/entities/scorecard.ts'
 
 export class IntakeLeadUseCase {
     constructor({ leadRepository, aiAssistant, safetyGuardService, leadQualificationService }) {
@@ -10,67 +9,54 @@ export class IntakeLeadUseCase {
     }
 
     async execute(input) {
-        const normalized = this.normalizeInput(input)
-        this.validateInput(normalized)
+        const phoneNumber = normalizePhoneNumber(input?.phoneNumber)
+        const name = sanitizeText(input?.name)
+        const objective = sanitizeText(input?.objective)
+        const preferredWindow = sanitizeText(input?.preferredWindow || 'nao informado')
+        const consent = Boolean(input?.consent)
+        const source = input?.source ?? 'chat'
+        const qualificationContext = input?.qualificationContext ?? {}
 
-        const aiAssessment = await this.aiAssistant.assessText(normalized.objective)
-        const risk = this.safetyGuardService.evaluateText(normalized.objective)
-        const scorecard = this.buildScorecard(aiAssessment)
+        if (!phoneNumber) {
+            throw new Error('phoneNumber is required')
+        }
+
+        if (!name) {
+            throw new Error('name is required')
+        }
+
+        if (!objective) {
+            throw new Error('objective is required')
+        }
+
+        const aiAssessment = await this.aiAssistant.assessText(objective)
+        const risk = this.safetyGuardService.evaluateText(objective)
         const qualification = this.leadQualificationService.scoreLead({
-            consent: normalized.consent,
-            objective: normalized.objective,
-            preferredWindow: normalized.preferredWindow,
+            consent,
+            preferredWindow,
             aiAssessment,
             risk,
-            scorecard,
         })
 
         const lead = createLead({
-            phoneNumber: normalized.phoneNumber,
-            name: normalized.name,
-            objective: normalized.objective,
-            preferredWindow: normalized.preferredWindow,
-            consent: normalized.consent,
-            source: normalized.source,
+            phoneNumber,
+            name,
+            objective,
+            preferredWindow,
+            consent,
+            source,
             interest: aiAssessment.interest,
             aiSummary: aiAssessment.summary,
             objectionTag: aiAssessment.objectionTag,
             qualificationScore: qualification.score,
             temperature: qualification.temperature,
+            qualificationContext,
             risk,
             status: risk.highRisk ? LEAD_STATUS.BLOCKED : LEAD_STATUS.QUALIFIED,
-            scorecard,
         })
 
         await this.leadRepository.save(lead)
-        return this.buildResult(lead, aiAssessment, risk)
-    }
 
-    normalizeInput(input) {
-        return {
-            phoneNumber: normalizePhoneNumber(input?.phoneNumber),
-            name: sanitizeText(input?.name),
-            objective: sanitizeText(input?.objective),
-            preferredWindow: sanitizeText(input?.preferredWindow || 'nao informado'),
-            consent: Boolean(input?.consent),
-            source: input?.source ?? 'chat',
-        }
-    }
-
-    validateInput(input) {
-        if (!input.phoneNumber) throw new Error('phoneNumber is required')
-        if (!input.name) throw new Error('name is required')
-        if (!input.objective) throw new Error('objective is required')
-    }
-
-    buildScorecard(aiAssessment) {
-        return createScorecard({
-            urgency: normalizeUrgency(aiAssessment?.urgency),
-            objection: normalizeObjection(aiAssessment?.objectionTag),
-        })
-    }
-
-    buildResult(lead, aiAssessment, risk) {
         return {
             lead,
             aiAssessment,

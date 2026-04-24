@@ -8,7 +8,6 @@ test('classifica lead quente com consentimento e urgencia alta', () => {
 
     const result = service.scoreLead({
         consent: true,
-        objective: 'Quero aplicar toxina para suavizar rugas na testa antes de um evento',
         preferredWindow: 'amanha as 14:00',
         aiAssessment: {
             urgency: 'alta',
@@ -21,7 +20,7 @@ test('classifica lead quente com consentimento e urgencia alta', () => {
     })
 
     assert.equal(result.temperature, 'quente')
-    assert.ok(result.score >= 75)
+    assert.ok(result.score >= 70)
 })
 
 test('forca lead frio quando existe sinal de risco', () => {
@@ -29,7 +28,6 @@ test('forca lead frio quando existe sinal de risco', () => {
 
     const result = service.scoreLead({
         consent: true,
-        objective: 'Quero preenchimento para labios',
         preferredWindow: 'hoje',
         aiAssessment: {
             urgency: 'alta',
