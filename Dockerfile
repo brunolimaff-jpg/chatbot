@@ -22,9 +22,8 @@ FROM node:21-alpine3.18 as deploy
 
 WORKDIR /app
 
-ARG PORT
-ENV PORT $PORT
-EXPOSE $PORT
+ENV CHATBOT_CHANNEL_MODE=sandbox
+EXPOSE 3008
 
 COPY --from=builder /app/assets ./assets
 COPY --from=builder /app/dist ./dist
