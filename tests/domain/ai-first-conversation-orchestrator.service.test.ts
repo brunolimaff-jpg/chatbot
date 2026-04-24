@@ -23,6 +23,7 @@ test('fallback usa abertura amiga consultiva em vez de tom institucional', () =>
 
     assert.match(decision.reply, /seja bem-vinda/i)
     assert.match(decision.reply, /😊✨/)
+    assert.match(decision.reply, /Maêve/)
     assert.match(decision.reply, /me conta/i)
     assert.doesNotMatch(decision.reply, /assistente virtual/i)
     assert.doesNotMatch(decision.reply, /dar continuidade ao atendimento com todo o cuidado/i)
@@ -41,5 +42,5 @@ test('sanitiza preco fixo com resposta comercial leve e sem tabela fria', () => 
     assert.doesNotMatch(decision.reply, /R\$/)
     assert.match(decision.reply, /💛/)
     assert.match(decision.reply, /sem compromisso/i)
-    assert.match(decision.reply, /faz sentido pra voce/i)
+    assert.match(decision.reply, /faz sentido para você/i)
 })

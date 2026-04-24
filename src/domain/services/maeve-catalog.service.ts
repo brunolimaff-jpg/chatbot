@@ -3,17 +3,17 @@ export class MaeveCatalogService {
         this.services = [
             {
                 id: 'protocolo_personalizado_maeve',
-                label: 'Protocolo Personalizado Maeve',
+                label: 'Protocolo Personalizado Maêve',
                 aliases: ['estetica avancada', 'protocolo', 'flacidez', 'celulite', 'gordura localizada'],
             },
             {
                 id: 'depilacao_laser',
-                label: 'Depilacao a Laser',
+                label: 'Depilação a Laser',
                 aliases: ['laser', 'depilacao', 'pelos', 'foliculite'],
             },
             {
                 id: 'drenagem_linfatica',
-                label: 'Drenagem Linfatica',
+                label: 'Drenagem Linfática',
                 aliases: ['drenagem', 'inchaco', 'retencao', 'linfatica'],
             },
             {
@@ -28,7 +28,7 @@ export class MaeveCatalogService {
             },
             {
                 id: 'massagem_pos_operatoria',
-                label: 'Massagem Pos-Operatoria',
+                label: 'Massagem Pós-Operatória',
                 aliases: ['pos operatorio', 'pos-operatorio', 'cirurgia', 'lipo'],
             },
             {
@@ -158,17 +158,17 @@ export class MaeveCatalogService {
     buildServicesAnswer() {
         const list = this.services.map((service) => `- ${service.label}`).join('\n')
         return [
-            'Na Maeve, a indicacao nasce de uma avaliacao personalizada. Hoje trabalhamos com:',
+                'Na Maêve, a indicação nasce de uma avaliação personalizada. Hoje trabalhamos com:',
             list,
-            'Me conta qual cuidado faz mais sentido para voce agora: pele, pelos, relaxamento, pos-operatorio ou contorno corporal?',
+            'Me conta qual cuidado faz mais sentido para você agora: pele, pelos, relaxamento, pós-operatório ou contorno corporal?',
         ].join('\n')
     }
 
     buildPriceAnswer() {
         return [
-            'Entendo sua pergunta. Na Maeve, o valor depende do objetivo, da avaliacao e do protocolo indicado para voce.',
-            'Para nao te passar uma informacao fria ou imprecisa, eu vou deixar sua conversa pronta para a equipe continuar com mais detalhe.',
-            'Me conta rapidinho qual resultado voce busca para eu encaminhar do jeito certo?',
+            'Entendo sua pergunta. Na Maêve, o valor depende do objetivo, da avaliação e do protocolo indicado para você.',
+            'Para não te passar uma informação fria ou imprecisa, eu vou deixar sua conversa pronta para a equipe continuar com mais detalhe.',
+            'Me conta rapidinho qual resultado você busca para eu encaminhar do jeito certo?',
         ].join('\n')
     }
 

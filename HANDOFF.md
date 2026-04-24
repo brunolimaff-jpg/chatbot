@@ -1,5 +1,26 @@
 # HANDOFF
 
+## 2026-04-24 17:55 (America/Cuiaba)
+- Branch: `codex/maeve-ai-sandbox`
+- Railway sandbox: `https://chatbot-production-27f0.up.railway.app/sandbox`
+
+### Aprendizado de deploy Railway
+- O build e o healthcheck passaram, mas o dominio publico retornou `Application failed to respond` quando o Public Networking foi configurado com target port `3008`.
+- Os logs de runtime mostraram o app ouvindo em `localhost:8080`:
+  - `GET http://localhost:8080/health`
+  - `GET http://localhost:8080/sandbox`
+- A correcao foi ajustar o target port publico do dominio Railway para `8080`.
+- Nao configurar `PORT=3008` manualmente no Railway para este deploy; deixar o Railway injetar a porta e conferir o target port pelos logs.
+
+### Variaveis usadas para sandbox
+- `CHATBOT_CHANNEL_MODE=sandbox`
+- `GEMINI_API_KEY=<secret>`
+- `HANDOFF_WHATSAPP_NUMBER=<numero_com_DDI_DDD>`
+
+### Observacao operacional
+- Se o healthcheck interno passar mas o navegador mostrar `Application failed to respond`, conferir primeiro o Public Networking target port.
+- O link publico do sandbox usa `/sandbox`, nao apenas a raiz.
+
 ## 2026-04-24 17:32 (America/Cuiaba)
 - Branch: `codex/maeve-ai-sandbox`
 - PR: `https://github.com/brunolimaff-jpg/chatbot/pull/8`

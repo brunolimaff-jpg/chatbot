@@ -1,10 +1,10 @@
 import { CONVERSATION_STATE } from '../entities/conversation-session.ts'
 
 const HUMAN_RISK_REPLY =
-    'Por seguranca, nao consigo orientar diagnostico ou conduta clinica por aqui. Vou encaminhar para atendimento humano te acompanhar com prioridade.'
+    'Por segurança, não consigo orientar diagnóstico ou conduta clínica por aqui. Vou encaminhar para atendimento humano te acompanhar com prioridade.'
 
 const PRIVACY_NOTICE_REPLY =
-    'Oi, seja bem-vinda a Maeve 😊✨ Me conta o que voce quer cuidar ou melhorar hoje?'
+    'Oi, seja bem-vinda à Maêve 😊✨ Me conta o que você quer cuidar ou melhorar hoje?'
 
 const allowedStates = new Set([
     CONVERSATION_STATE.DISCOVERY,
@@ -38,7 +38,7 @@ export class AiFirstConversationOrchestratorService {
                     matchedKeywords: risk.matchedKeywords,
                 },
                 confidence: 1,
-                reasoningSummary: 'Guardrail clinico deterministico acionado antes da IA.',
+                reasoningSummary: 'Guardrail clínico determinístico acionado antes da IA.',
                 source: 'guardrail',
                 modelUsed: null,
             })
@@ -67,7 +67,7 @@ export class AiFirstConversationOrchestratorService {
             handoff: { recommended: false, reason: null, priority: 'normal' },
             risk: { clinicalRisk: false, diagnosisRequest: false },
             confidence: 0,
-            reasoningSummary: 'Fallback seguro usado porque a IA nao retornou uma decisao valida.',
+            reasoningSummary: 'Fallback seguro usado porque a IA não retornou uma decisão válida.',
             source: 'fallback',
             modelUsed: null,
         })
@@ -101,7 +101,7 @@ export class AiFirstConversationOrchestratorService {
                 matchedKeywords: Array.isArray(risk.matchedKeywords) ? risk.matchedKeywords : [],
             },
             confidence: Number.isFinite(Number(payload.confidence)) ? Number(payload.confidence) : 0,
-            reasoningSummary: String(payload.reasoningSummary ?? 'Decisao sem resumo.'),
+            reasoningSummary: String(payload.reasoningSummary ?? 'Decisão sem resumo.'),
             source: payload.source ?? 'gemini',
             modelUsed: payload.modelUsed ?? null,
         }
@@ -132,11 +132,11 @@ export class AiFirstConversationOrchestratorService {
 
         if (/R\$\s*\d/i.test(text)) {
             return [
-                'Entendo 💛 O valor depende do objetivo, da area e do protocolo que fizer sentido pra voce.',
-                'A equipe te orienta sem compromisso e ve o que faz sentido pra voce, sem te passar uma tabela fria.',
+                'Entendo 💛 O valor depende do objetivo, da área e do protocolo que fizer sentido para você.',
+                'A equipe te orienta sem compromisso e vê o que faz sentido para você, sem te passar uma tabela fria.',
             ].join(' ')
         }
 
-        return text
+        return text.replace(/\bMaeve\b/g, 'Maêve')
     }
 }

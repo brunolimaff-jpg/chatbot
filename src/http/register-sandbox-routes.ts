@@ -1,8 +1,12 @@
+import { readFile } from 'node:fs/promises'
+import { join } from 'node:path'
+
 import { CHANNEL_MODE } from '../config/env.ts'
 import { SANDBOX_CHAT_PAGE } from './sandbox-chat-page.ts'
 import { sendError, sendSuccess } from './http-response.ts'
 
 const asText = (value) => String(value ?? '').trim()
+const logoPath = join(process.cwd(), 'assets', 'maeve-logo.svg')
 
 const ensureSandboxMode = (env, res) => {
     if (env.channelMode === CHANNEL_MODE.SANDBOX) return true
@@ -19,6 +23,14 @@ const registerSandboxPlaygroundRoute = ({ provider, handleCtx }) => {
     const renderPage = handleCtx(async (_bot, _req, res) => sendHtml(res, SANDBOX_CHAT_PAGE))
     provider.server.get('/sandbox', renderPage)
     provider.server.get('/', renderPage)
+    provider.server.get(
+        '/assets/maeve-logo.svg',
+        async (_req, res) => {
+            const logo = await readFile(logoPath)
+            res.writeHead(200, { 'Content-Type': 'image/svg+xml; charset=utf-8' })
+            res.end(logo)
+        }
+    )
 }
 
 const registerSimulateMessageRoute = ({ provider, handleCtx, context, env }) => {

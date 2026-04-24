@@ -48,6 +48,21 @@ All API errors use:
 { "status": "error", "message": "text", "code": "ERROR_CODE" }
 ```
 
+### Railway sandbox
+
+Para publicar o sandbox no Railway:
+
+- Defina `CHATBOT_CHANNEL_MODE=sandbox`.
+- Defina `GEMINI_API_KEY` e `HANDOFF_WHATSAPP_NUMBER`.
+- Nao defina `PORT` manualmente nas variaveis; o Railway injeta a porta do container.
+- No dominio publico do Railway, deixe o target port automatico ou configure com a porta que aparece nos logs de start.
+- Neste deploy validado, o BuilderBot iniciou em `localhost:8080`, entao o Public Networking precisou apontar para `8080`, nao `3008`.
+
+Links esperados:
+
+- `https://<dominio-railway>/health`
+- `https://<dominio-railway>/sandbox`
+
 ### Execucao facil (Windows)
 
 - Clique duas vezes em `run-chatbot.bat` para escolher o modo:
