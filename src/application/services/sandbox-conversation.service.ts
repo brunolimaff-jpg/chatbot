@@ -1,234 +1,208 @@
 import {
+    appendBotMessages,
+    appendTransientMessage,
     CONVERSATION_STATE,
-    registerInvalidAttempt,
-    updateSessionState,
+    createConversationSession,
+    persistConsentedHistory,
+    updateSession,
 } from '../../domain/entities/conversation-session.ts'
-import { sanitizeText } from '../../domain/entities/lead.ts'
-import { buildSummaryMessage, conversationCopy, leadTemperatureMessage } from './conversation-copy.ts'
+import {
+    buildQualificationContext,
+    textSlotFields,
+    usefulDetailFields,
+} from './sandbox-handoff-context.ts'
+
+const fallbackObjective = (session, message) => session.leadDraft.objective ?? (String(message ?? '').trim() || 'avaliacao personalizada')
+const immediateHandoffIntents = new Set(['clinical_risk', 'human_request'])
 
 export class SandboxConversationService {
-    constructor(dependencies) {
-        this.startConversationUseCase = dependencies.startConversationUseCase
-        this.captureLeadFieldUseCase = dependencies.captureLeadFieldUseCase
-        this.qualifyLeadUseCase = dependencies.qualifyLeadUseCase
-        this.dispatchHandoffUseCase = dependencies.dispatchHandoffUseCase
-        this.evaluateRiskUseCase = dependencies.evaluateRiskUseCase
-        this.sessionRepository = dependencies.sessionRepository
-        this.policyService = dependencies.policyService
+    constructor({
+        conversationRepository,
+        catalogService,
+        orchestratorService,
+        safetyGuardService,
+        intakeLeadUseCase,
+        handoffLeadUseCase,
+    }) {
+        this.conversationRepository = conversationRepository
+        this.catalogService = catalogService
+        this.orchestratorService = orchestratorService
+        this.safetyGuardService = safetyGuardService
+        this.intakeLeadUseCase = intakeLeadUseCase
+        this.handoffLeadUseCase = handoffLeadUseCase
     }
 
     async handleMessage(input) {
-        const from = sanitizeText(input?.from)
-        const message = sanitizeText(input?.message)
+        const from = String(input?.from ?? '').trim()
+        const message = String(input?.message ?? '').trim()
         if (!from || !message) throw new Error('from and message are required')
 
-        if (this.policyService.isRestartCommand(message)) {
-            await this.reset({ from })
+        let session = await this.findOrCreateSession(from)
+        session = this.applyInputMetadata(session, input)
+        session = appendTransientMessage(session, 'user', message)
+
+        const decision = await this.orchestratorService.analyze({ message, session })
+        session = this.applyDecision(session, decision, message)
+        const executableDecision = this.applyHandoffQualificationGate(session, decision)
+
+        if (executableDecision.handoff.recommended && !session.leadId) {
+            session = await this.dispatchHandoff(session, executableDecision, message)
         }
 
-        const { session } = await this.startConversationUseCase.execute({ phoneNumber: from })
-        if (session.state === CONVERSATION_STATE.ENTRY) {
-            return this.moveToIntentConfirm(session)
+        if (session.state !== executableDecision.nextState) {
+            session = updateSession(session, { state: executableDecision.nextState })
         }
 
-        if (this.policyService.isExitCommand(message)) {
-            return this.closeSession(session, [conversationCopy.close])
-        }
-
-        return this.routeByState(session, message)
+        return this.saveAndReply(session, executableDecision, [executableDecision.reply])
     }
 
     async reset(input) {
-        if (input?.from) {
-            await this.sessionRepository.deleteByPhone(input.from)
-            return
-        }
-
-        if (input?.sessionId) {
-            await this.sessionRepository.deleteById(input.sessionId)
-            return
-        }
-
-        throw new Error('from or sessionId is required')
+        if (input?.sessionId) return this.conversationRepository.deleteById(input.sessionId)
+        return this.conversationRepository.deleteByPhone(input?.from)
     }
 
     async getSession(input) {
-        if (input?.from) {
-            return this.sessionRepository.findByPhone(input.from)
+        if (input?.sessionId) return this.conversationRepository.findById(input.sessionId)
+        return this.conversationRepository.findByPhone(input?.from)
+    }
+
+    async findOrCreateSession(from) {
+        const existing = await this.conversationRepository.findByPhone(from)
+        if (existing) return existing
+        const session = createConversationSession({ phoneNumber: from })
+        await this.conversationRepository.save(session)
+        return session
+    }
+
+    applyDecision(session, decision, message) {
+        const slots = decision.slots ?? {}
+        const serviceLabel = typeof slots.service === 'string' ? slots.service : slots.service?.label
+        const objective = slots.objective ?? (serviceLabel ? `${serviceLabel}: ${message}` : undefined)
+        const leadDraft = {}
+
+        if (serviceLabel !== undefined && serviceLabel !== null && String(serviceLabel).trim()) {
+            leadDraft.service = String(serviceLabel).trim()
+        }
+        if (slots.name !== undefined && slots.name !== null && String(slots.name).trim()) {
+            leadDraft.name = String(slots.name).trim()
+        }
+        if (objective !== undefined && objective !== null && String(objective).trim()) {
+            leadDraft.objective = String(objective).trim()
+        }
+        for (const field of textSlotFields) {
+            if (slots[field] !== undefined && slots[field] !== null && String(slots[field]).trim()) {
+                leadDraft[field] = String(slots[field]).trim()
+            }
+        }
+        if (slots.budgetConcern !== undefined && slots.budgetConcern !== null) {
+            leadDraft.budgetConcern = Boolean(slots.budgetConcern)
+        }
+        if (Array.isArray(slots.qualificationReasons)) {
+            leadDraft.qualificationReasons = slots.qualificationReasons.map((item) => String(item).trim()).filter(Boolean)
+        }
+        if (Array.isArray(slots.qualificationMissing)) {
+            leadDraft.qualificationMissing = slots.qualificationMissing
         }
 
-        if (input?.sessionId) {
-            return this.sessionRepository.findById(input.sessionId)
-        }
-
-        throw new Error('from or sessionId is required')
+        return updateSession(session, {
+            state: decision.nextState,
+            lastNlu: decision,
+            leadDraft,
+        })
     }
 
-    async moveToIntentConfirm(session) {
-        const updated = updateSessionState(session, CONVERSATION_STATE.INTENT_CONFIRM)
-        await this.sessionRepository.save(updated)
-        return { session: updated, messages: [conversationCopy.askContinue] }
-    }
+    applyHandoffQualificationGate(session, decision) {
+        if (!decision.handoff.recommended) return decision
+        if (immediateHandoffIntents.has(decision.intent)) return decision
+        if (decision.intent === 'schedule_interest' && session.leadDraft.objective) return decision
+        if (this.isQualificationComplete(session.leadDraft)) return decision
 
-    routeByState(session, message) {
-        if (session.state === CONVERSATION_STATE.INTENT_CONFIRM) return this.handleIntent(session, message)
-        if (session.state === CONVERSATION_STATE.NAME) return this.handleName(session, message)
-        if (session.state === CONVERSATION_STATE.OBJECTIVE) return this.handleObjective(session, message)
-        if (session.state === CONVERSATION_STATE.SCORECARD_URGENCY) return this.handleUrgency(session, message)
-        if (session.state === CONVERSATION_STATE.SCORECARD_OBJECTION) return this.handleObjection(session, message)
-        if (session.state === CONVERSATION_STATE.PREFERRED_WINDOW) return this.handleWindow(session, message)
-        if (session.state === CONVERSATION_STATE.LGPD_CONSENT) return this.handleConsent(session, message)
-        if (session.state === CONVERSATION_STATE.SUMMARY_CONFIRM) return this.handleSummaryConfirm(session, message)
-        return this.moveToIntentConfirm(session)
-    }
-
-    async handleIntent(session, message) {
-        const validation = this.policyService.validateForState(CONVERSATION_STATE.INTENT_CONFIRM, message)
-        if (!validation.valid) return this.invalid(session, validation.error, message)
-        if (validation.value === false) return this.closeSession(session, [conversationCopy.close])
-        return this.capture(session, { nextState: CONVERSATION_STATE.NAME }, conversationCopy.askName)
-    }
-
-    async handleName(session, message) {
-        const validation = this.policyService.validateForState(CONVERSATION_STATE.NAME, message)
-        if (!validation.valid) return this.invalid(session, validation.error, message)
-        return this.capture(session, { name: validation.value, nextState: CONVERSATION_STATE.OBJECTIVE }, conversationCopy.askObjective)
-    }
-
-    async handleObjective(session, message) {
-        const validation = this.policyService.validateForState(CONVERSATION_STATE.OBJECTIVE, message)
-        if (!validation.valid) return this.invalid(session, validation.error, message)
-
-        const risk = await this.evaluateRiskUseCase.execute({ text: validation.value })
-        if (risk.highRisk || risk.diagnosisRequest) {
-            return this.forwardToHuman(session, validation.value, risk.recommendedAction)
-        }
-
-        return this.capture(
-            session,
-            { objective: validation.value, nextState: CONVERSATION_STATE.SCORECARD_URGENCY },
-            conversationCopy.askUrgency
-        )
-    }
-
-    async handleUrgency(session, message) {
-        const validation = this.policyService.validateForState(CONVERSATION_STATE.SCORECARD_URGENCY, message)
-        if (!validation.valid) return this.invalid(session, validation.error, message)
-        return this.capture(
-            session,
-            { urgency: validation.value, nextState: CONVERSATION_STATE.SCORECARD_OBJECTION },
-            conversationCopy.askObjection
-        )
-    }
-
-    async handleObjection(session, message) {
-        const validation = this.policyService.validateForState(CONVERSATION_STATE.SCORECARD_OBJECTION, message)
-        if (!validation.valid) return this.invalid(session, validation.error, message)
-        return this.capture(
-            session,
-            { objection: validation.value, nextState: CONVERSATION_STATE.PREFERRED_WINDOW },
-            conversationCopy.askWindow
-        )
-    }
-
-    async handleWindow(session, message) {
-        const validation = this.policyService.validateForState(CONVERSATION_STATE.PREFERRED_WINDOW, message)
-        if (!validation.valid) return this.invalid(session, validation.error, message)
-        return this.capture(session, { preferredWindow: validation.value, nextState: CONVERSATION_STATE.LGPD_CONSENT }, conversationCopy.askConsent)
-    }
-
-    async handleConsent(session, message) {
-        const validation = this.policyService.validateForState(CONVERSATION_STATE.LGPD_CONSENT, message)
-        if (!validation.valid) return this.invalid(session, validation.error, message)
-        if (validation.value === false) return this.closeSession(session, [conversationCopy.consentRequired])
-        const captured = await this.capture(session, { consent: true, nextState: CONVERSATION_STATE.SUMMARY_CONFIRM }, null)
         return {
-            session: captured.session,
-            messages: [buildSummaryMessage(captured.session.leadDraft), conversationCopy.askSummaryConfirm],
+            ...decision,
+            nextState: CONVERSATION_STATE.QUALIFYING,
+            handoff: {
+                ...decision.handoff,
+                recommended: false,
+                blockedReason: 'qualification_incomplete',
+            },
+            slots: {
+                ...decision.slots,
+                qualificationMissing: this.resolveMissingQualification(session.leadDraft),
+            },
         }
     }
 
-    async handleSummaryConfirm(session, message) {
-        const validation = this.policyService.validateForState(CONVERSATION_STATE.SUMMARY_CONFIRM, message)
-        if (!validation.valid) return this.invalid(session, validation.error, message)
-        if (validation.value === false) {
-            return this.capture(session, { nextState: CONVERSATION_STATE.OBJECTIVE }, conversationCopy.askObjective)
-        }
+    isQualificationComplete(draft = {}) {
+        return Boolean(draft.objective && draft.service && usefulDetailFields.some((field) => Boolean(draft[field])))
+    }
 
-        const draft = session.leadDraft
-        const intake = await this.qualifyLeadUseCase.execute({
+    resolveMissingQualification(draft = {}) {
+        const missing = []
+        if (!draft.objective) missing.push('objective')
+        if (!draft.service) missing.push('service')
+        if (!usefulDetailFields.some((field) => Boolean(draft[field]))) missing.push('useful_detail')
+        return missing
+    }
+
+    async dispatchHandoff(session, decision, message) {
+        const intake = await this.intakeLeadUseCase.execute({
             phoneNumber: session.phoneNumber,
-            name: draft.name ?? 'Paciente',
-            objective: draft.objective ?? 'avaliacao geral',
-            preferredWindow: draft.preferredWindow ?? 'nao informado',
+            name: session.leadDraft.name ?? 'Paciente',
+            objective: fallbackObjective(session, message),
+            preferredWindow: session.leadDraft.preferredWindow ?? 'nao informado',
             consent: true,
             source: 'sandbox',
-            scorecard: {
-                urgency: draft.urgency ?? 'baixa',
-                objection: draft.objection ?? 'nenhuma',
-            },
-            conversationId: session.id,
+            qualificationContext: buildQualificationContext(session.leadDraft, decision),
         })
 
-        const handoff = await this.dispatchHandoffUseCase.execute({
+        const handoff = await this.handoffLeadUseCase.execute({
             leadId: intake.lead.id,
-            reason: 'lead_qualificado_sandbox',
-            requestedBy: 'sandbox',
+            reason: decision.handoff.reason ?? decision.intent,
+            requestedBy: decision.source,
         })
 
-        const closed = await this.closeSession(session, [
-            `${intake.lead.name}, recebi seus dados com sucesso.`,
-            leadTemperatureMessage(intake.lead.temperature),
-            'Nossa recepcao vai te chamar para confirmar o melhor horario.',
-        ])
-
-        return { ...closed, lead: intake.lead, handoff: handoff.handoff }
+        return updateSession(session, {
+            state: decision.nextState,
+            leadId: intake.lead.id,
+            handoffId: handoff.handoff.handoffId,
+        })
     }
 
-    async capture(session, input, nextMessage) {
-        const { session: updated } = await this.captureLeadFieldUseCase.execute({
+    async saveAndReply(session, decision, messages) {
+        const withMessages = persistConsentedHistory(
+            appendBotMessages(updateSession(session, { lastNlu: decision }), messages)
+        )
+        await this.conversationRepository.save(withMessages)
+        return this.response(withMessages, decision, messages)
+    }
+
+    response(session, decision, messages) {
+        return {
+            status: 'ok',
             session,
-            payload: input,
-            nextState: input.nextState,
-        })
-
-        const messages = nextMessage ? [nextMessage] : []
-        return { session: updated, messages }
-    }
-
-    async invalid(session, hint, message) {
-        const updated = registerInvalidAttempt(session, session.state)
-        await this.sessionRepository.save(updated)
-        const attempts = Number(updated.invalidAttempts?.[session.state] ?? 0)
-        if (this.policyService.isMaxInvalidAttemptsReached(attempts)) {
-            return this.forwardToHuman(updated, message, 'ambiguidade_alta')
+            sessionId: session.id,
+            state: session.state,
+            messages,
+            nlu: decision,
+            leadId: session.leadId,
+            handoffId: session.handoffId,
         }
-        return { session: updated, messages: [`${conversationCopy.invalid}${hint}`] }
     }
 
-    async forwardToHuman(session, objective, reason) {
-        await this.dispatchHandoffUseCase.execute({
-            reason,
-            requestedBy: 'sandbox',
-            manualPayload: {
-                phoneNumber: session.phoneNumber,
-                name: session.leadDraft.name ?? 'Paciente',
-                objective,
-                preferredWindow: session.leadDraft.preferredWindow ?? 'nao informado',
-                scorecard: {
-                    urgency: session.leadDraft.urgency ?? 'nao informado',
-                    objection: session.leadDraft.objection ?? 'nao informado',
-                },
-                consent: { granted: false, source: 'sandbox', grantedAt: null },
-            },
-        })
+    applyInputMetadata(session, input = {}) {
+        const referral = input.referral ?? input.metadata?.referral ?? null
+        const leadDraft = {}
 
-        return this.closeSession(session, [conversationCopy.risk, conversationCopy.close])
+        const sourceCampaign = input.sourceCampaign ?? input.campaign ?? referral?.headline ?? referral?.source_id
+        const sourceAd = input.sourceAd ?? referral?.body ?? referral?.source_type
+        const sourceUrl = input.sourceUrl ?? referral?.source_url
+
+        if (sourceCampaign) leadDraft.sourceCampaign = String(sourceCampaign).trim()
+        if (sourceAd) leadDraft.sourceAd = String(sourceAd).trim()
+        if (sourceUrl) leadDraft.sourceUrl = String(sourceUrl).trim()
+
+        if (!Object.keys(leadDraft).length) return session
+        return updateSession(session, { leadDraft })
     }
 
-    async closeSession(session, messages) {
-        const closed = updateSessionState(session, CONVERSATION_STATE.CLOSED)
-        await this.sessionRepository.save(closed)
-        return { session: closed, messages }
-    }
 }

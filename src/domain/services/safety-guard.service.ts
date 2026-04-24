@@ -1,5 +1,3 @@
-import { normalizeForMatch } from '../../shared/text-normalizer.ts'
-
 export const HIGH_RISK_KEYWORDS = [
     'dor intensa',
     'sangramento',
@@ -11,23 +9,34 @@ export const HIGH_RISK_KEYWORDS = [
     'necrose',
     'ardencia forte',
     'inchaco severo',
+    'inchaço severo',
 ]
 
 const DIAGNOSIS_REQUEST_KEYWORDS = [
     'diagnostico',
+    'diagnóstico',
     'qual remedio',
+    'qual remédio',
     'dosagem',
     'prescricao',
+    'prescrição',
+    'protocolo medico',
     'protocolo medico',
     'o que tomar',
 ]
 
+const normalize = (text = '') =>
+    String(text)
+        .toLowerCase()
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+
 const findMatches = (normalizedText, keywords) =>
-    keywords.filter((keyword) => normalizedText.includes(normalizeForMatch(keyword)))
+    keywords.filter((keyword) => normalizedText.includes(normalize(keyword)))
 
 export class SafetyGuardService {
     evaluateText(text = '') {
-        const normalizedText = normalizeForMatch(text)
+        const normalizedText = normalize(text)
         const highRiskMatches = findMatches(normalizedText, HIGH_RISK_KEYWORDS)
         const diagnosisMatches = findMatches(normalizedText, DIAGNOSIS_REQUEST_KEYWORDS)
 

@@ -7,14 +7,17 @@ import { QualifyLeadUseCase } from '../application/use-cases/qualify-lead.use-ca
 import { StartOrResumeConversationUseCase } from '../application/use-cases/start-or-resume-conversation.use-case.ts'
 import { SandboxConversationService } from '../application/services/sandbox-conversation.service.ts'
 import { CHANNEL_MODE } from '../config/env.ts'
+import { AiFirstConversationOrchestratorService } from '../domain/services/ai-first-conversation-orchestrator.service.ts'
 import { ConversationPolicyService } from '../domain/services/conversation-policy.service.ts'
 import { LeadQualificationService } from '../domain/services/lead-qualification.service.ts'
+import { MaeveCatalogService } from '../domain/services/maeve-catalog.service.ts'
 import { SafetyGuardService } from '../domain/services/safety-guard.service.ts'
-import { HeuristicAiAssistant } from '../infrastructure/ai/heuristic-ai-assistant.ts'
+import { GeminiAiAssistant } from '../infrastructure/ai/gemini-ai-assistant.ts'
 import { ConsoleHandoffGateway } from '../infrastructure/handoff/console-handoff.gateway.ts'
 import { InMemoryHandoffGateway } from '../infrastructure/handoff/in-memory-handoff.gateway.ts'
 import { buildPostgresPool, ensureLeadTable } from '../infrastructure/persistence/postgres-client.ts'
 import { buildRedisClient } from '../infrastructure/persistence/redis-client.ts'
+import { InMemoryConversationRepository } from '../infrastructure/repositories/in-memory-conversation.repository.ts'
 import { InMemoryIdempotencyRepository } from '../infrastructure/repositories/in-memory-idempotency.repository.ts'
 import { InMemoryLeadRepository } from '../infrastructure/repositories/in-memory-lead.repository.ts'
 import { InMemorySessionRepository } from '../infrastructure/repositories/in-memory-session.repository.ts'
@@ -75,12 +78,25 @@ const createHandoffGateway = (env) => {
     })
 }
 
-const createDomainServices = () => ({
-    aiAssistant: new HeuristicAiAssistant(),
-    safetyGuardService: new SafetyGuardService(),
-    leadQualificationService: new LeadQualificationService(),
-    conversationPolicyService: new ConversationPolicyService(),
-})
+const createDomainServices = () => {
+    const aiAssistant = new GeminiAiAssistant()
+    const catalogService = new MaeveCatalogService()
+    const safetyGuardService = new SafetyGuardService()
+    const orchestratorService = new AiFirstConversationOrchestratorService({
+        aiAssistant,
+        catalogService,
+        safetyGuardService,
+    })
+
+    return {
+        aiAssistant,
+        catalogService,
+        safetyGuardService,
+        orchestratorService,
+        leadQualificationService: new LeadQualificationService(),
+        conversationPolicyService: new ConversationPolicyService(),
+    }
+}
 
 const createUseCases = ({ leadRepository, handoffGateway, sessionRepository, services }) => {
     const intakeLeadUseCase = new IntakeLeadUseCase({
@@ -115,15 +131,14 @@ const createUseCases = ({ leadRepository, handoffGateway, sessionRepository, ser
     }
 }
 
-const createSandboxService = ({ useCases, sessionRepository, conversationPolicyService }) =>
+const createSandboxService = ({ useCases, services }) =>
     new SandboxConversationService({
-        startConversationUseCase: useCases.startConversationUseCase,
-        captureLeadFieldUseCase: useCases.captureLeadFieldUseCase,
-        qualifyLeadUseCase: useCases.qualifyLeadUseCase,
-        dispatchHandoffUseCase: useCases.dispatchHandoffUseCase,
-        evaluateRiskUseCase: useCases.evaluateRiskUseCase,
-        sessionRepository,
-        policyService: conversationPolicyService,
+        conversationRepository: new InMemoryConversationRepository(),
+        catalogService: services.catalogService,
+        orchestratorService: services.orchestratorService,
+        safetyGuardService: services.safetyGuardService,
+        intakeLeadUseCase: useCases.intakeLeadUseCase,
+        handoffLeadUseCase: useCases.handoffLeadUseCase,
     })
 
 export const createRuntimeContext = async (env) => {
@@ -132,11 +147,7 @@ export const createRuntimeContext = async (env) => {
     const handoffGateway = createHandoffGateway(env)
     const services = createDomainServices()
     const useCases = createUseCases({ leadRepository, handoffGateway, sessionRepository, services })
-    const sandboxConversationService = createSandboxService({
-        useCases,
-        sessionRepository,
-        conversationPolicyService: services.conversationPolicyService,
-    })
+    const sandboxConversationService = createSandboxService({ useCases, services })
 
     return {
         repositories: {
@@ -147,6 +158,9 @@ export const createRuntimeContext = async (env) => {
         services: {
             safetyGuardService: services.safetyGuardService,
             conversationPolicyService: services.conversationPolicyService,
+            aiAssistant: services.aiAssistant,
+            catalogService: services.catalogService,
+            orchestratorService: services.orchestratorService,
             sandboxConversationService,
         },
         gateways: {
