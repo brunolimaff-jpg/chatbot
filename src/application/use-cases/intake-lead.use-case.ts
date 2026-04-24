@@ -1,5 +1,21 @@
 import { createLead, LEAD_STATUS, normalizePhoneNumber, sanitizeText } from '../../domain/entities/lead.ts'
 
+const normalizeInput = (input = {}) => ({
+    phoneNumber: normalizePhoneNumber(input.phoneNumber),
+    name: sanitizeText(input.name),
+    objective: sanitizeText(input.objective),
+    preferredWindow: sanitizeText(input.preferredWindow || 'nao informado'),
+    consent: Boolean(input.consent),
+    source: input.source ?? 'chat',
+    qualificationContext: input.qualificationContext ?? {},
+})
+
+const assertRequiredLeadInput = ({ phoneNumber, name, objective }) => {
+    if (!phoneNumber) throw new Error('phoneNumber is required')
+    if (!name) throw new Error('name is required')
+    if (!objective) throw new Error('objective is required')
+}
+
 export class IntakeLeadUseCase {
     constructor({ leadRepository, aiAssistant, safetyGuardService, leadQualificationService }) {
         this.leadRepository = leadRepository
@@ -9,48 +25,25 @@ export class IntakeLeadUseCase {
     }
 
     async execute(input) {
-        const phoneNumber = normalizePhoneNumber(input?.phoneNumber)
-        const name = sanitizeText(input?.name)
-        const objective = sanitizeText(input?.objective)
-        const preferredWindow = sanitizeText(input?.preferredWindow || 'nao informado')
-        const consent = Boolean(input?.consent)
-        const source = input?.source ?? 'chat'
-        const qualificationContext = input?.qualificationContext ?? {}
+        const normalizedInput = normalizeInput(input)
+        assertRequiredLeadInput(normalizedInput)
 
-        if (!phoneNumber) {
-            throw new Error('phoneNumber is required')
-        }
-
-        if (!name) {
-            throw new Error('name is required')
-        }
-
-        if (!objective) {
-            throw new Error('objective is required')
-        }
-
-        const aiAssessment = await this.aiAssistant.assessText(objective)
-        const risk = this.safetyGuardService.evaluateText(objective)
+        const aiAssessment = await this.aiAssistant.assessText(normalizedInput.objective)
+        const risk = this.safetyGuardService.evaluateText(normalizedInput.objective)
         const qualification = this.leadQualificationService.scoreLead({
-            consent,
-            preferredWindow,
+            consent: normalizedInput.consent,
+            preferredWindow: normalizedInput.preferredWindow,
             aiAssessment,
             risk,
         })
 
         const lead = createLead({
-            phoneNumber,
-            name,
-            objective,
-            preferredWindow,
-            consent,
-            source,
+            ...normalizedInput,
             interest: aiAssessment.interest,
             aiSummary: aiAssessment.summary,
             objectionTag: aiAssessment.objectionTag,
             qualificationScore: qualification.score,
             temperature: qualification.temperature,
-            qualificationContext,
             risk,
             status: risk.highRisk ? LEAD_STATUS.BLOCKED : LEAD_STATUS.QUALIFIED,
         })

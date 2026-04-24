@@ -29,6 +29,12 @@ export const sanitizeText = (value = '') => String(value).trim().replace(/\s+/g,
 
 export const nowIso = () => new Date().toISOString()
 
+const buildConsent = ({ consent, source, timestamp }) => ({
+    granted: Boolean(consent),
+    source: source ?? 'chat',
+    grantedAt: consent ? timestamp : null,
+})
+
 export const createLead = ({
     phoneNumber,
     name,
@@ -61,11 +67,7 @@ export const createLead = ({
         temperature,
         qualificationContext: qualificationContext ?? {},
         risk,
-        consent: {
-            granted: Boolean(consent),
-            source: source ?? 'chat',
-            grantedAt: consent ? timestamp : null,
-        },
+        consent: buildConsent({ consent, source, timestamp }),
         status,
         createdAt: timestamp,
         updatedAt: timestamp,

@@ -1,4 +1,4 @@
-const HIGH_RISK_KEYWORDS = [
+export const HIGH_RISK_KEYWORDS = [
     'dor intensa',
     'sangramento',
     'alergia',

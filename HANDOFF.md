@@ -1,5 +1,33 @@
 # HANDOFF
 
+## 2026-04-24 17:32 (America/Cuiaba)
+- Branch: `codex/maeve-ai-sandbox`
+- PR: `https://github.com/brunolimaff-jpg/chatbot/pull/8`
+
+### Mudancas implementadas
+- Corrigidos os comentarios de review da PR #8:
+  - `GeminiAiAssistant.withTimeout` agora limpa o timer no `finally`.
+  - `src/app.ts` voltou a ser entrada modular e o HTML do sandbox fica em `src/http/sandbox-chat-page.ts`.
+  - `hybrid-conversation-nlu.service.ts` foi removido por nao ter referencias.
+  - Removida a atualizacao redundante de estado `CLOSED` no sandbox.
+- Corrigida a falha de CI adicionando `npm run check:structure` e ajustando os pontos que violavam limite estrutural.
+- Mantido o sandbox atual com contexto de campanha/anuncio/origem, `nlu`, sessao e handoff no debug.
+- Bootstrap atualizado para usar Gemini, catalogo Maeve, orquestrador IA-first e servico de sandbox atuais.
+
+### Validacao local executada
+- `npm run check:structure`
+- `npm test`
+- `npm run lint`
+- `npm run build`
+
+### Riscos e impactos
+- Baixo risco funcional: mudancas focadas em modularizacao, compatibilidade de build e comentarios de review.
+- O modo sandbox continua usando repositorio em memoria para conversa simulada.
+
+### Pendencias abertas
+- Aguardar CI do GitHub apos push.
+- Responder os comentarios da PR com o resumo das correcoes apos a atualizacao subir.
+
 ## 2026-04-23 16:10 (America/Cuiaba)
 - Branch: `codex/pr5-review-followup`
 - PR: `https://github.com/brunolimaff-jpg/chatbot/pull/6`

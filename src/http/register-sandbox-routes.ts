@@ -36,14 +36,21 @@ const registerSimulateMessageRoute = ({ provider, handleCtx, context, env }) => 
                     from,
                     message,
                     sessionId: asText(payload.sessionId) || null,
+                    sourceCampaign: asText(payload.sourceCampaign) || null,
+                    sourceAd: asText(payload.sourceAd) || null,
+                    sourceUrl: asText(payload.sourceUrl) || null,
+                    referral: payload.referral ?? null,
+                    metadata: payload.metadata ?? null,
                 })
 
                 return sendSuccess(res, 200, {
-                    sessionId: result.session.id,
-                    state: result.session.state,
+                    session: result.session,
+                    sessionId: result.sessionId,
+                    state: result.state,
                     messages: result.messages,
-                    leadId: result.lead?.id ?? null,
-                    handoffId: result.handoff?.handoffId ?? null,
+                    nlu: result.nlu,
+                    leadId: result.leadId,
+                    handoffId: result.handoffId,
                 })
             } catch (error) {
                 return sendError(res, 422, error.message, 'SIMULATION_FAILED')

@@ -16,6 +16,15 @@ export const CONVERSATION_STATE = Object.freeze({
     LGPD_CONSENT: 'LGPD_CONSENT',
 })
 
+export const SESSION_EXPIRATION_MS = 24 * 60 * 60 * 1000
+
+const expiresAt = () => new Date(Date.now() + SESSION_EXPIRATION_MS).toISOString()
+
+const sanitizeOptional = (value) => {
+    const text = sanitizeText(value ?? '')
+    return text || null
+}
+
 export const createEmptyLeadDraft = () => ({
     name: null,
     objective: null,
@@ -53,8 +62,10 @@ export const createConversationSession = ({ phoneNumber }) => {
         lastNlu: null,
         leadId: null,
         handoffId: null,
+        invalidAttempts: {},
         createdAt: timestamp,
         updatedAt: timestamp,
+        expiresAt: expiresAt(),
     }
 }
 
@@ -69,6 +80,7 @@ export const appendTransientMessage = (session, role, content) => ({
         },
     ],
     updatedAt: nowIso(),
+    expiresAt: expiresAt(),
 })
 
 export const appendBotMessages = (session, messages = []) =>
@@ -82,6 +94,7 @@ export const updateSession = (session, patch = {}) => ({
         ...(patch.leadDraft ?? {}),
     },
     updatedAt: nowIso(),
+    expiresAt: expiresAt(),
 })
 
 export const persistConsentedHistory = (session) =>
@@ -89,6 +102,47 @@ export const persistConsentedHistory = (session) =>
         history: [...session.history, ...session.transientHistory],
         transientHistory: [],
     })
+
+export const updateSessionState = (session, state) => updateSession(session, { state })
+
+export const mergeSessionLeadDraft = (session, payload = {}) =>
+    updateSession(session, {
+        leadDraft: {
+            ...('name' in payload ? { name: sanitizeOptional(payload.name) } : {}),
+            ...('objective' in payload ? { objective: sanitizeOptional(payload.objective) } : {}),
+            ...('preferredWindow' in payload ? { preferredWindow: sanitizeOptional(payload.preferredWindow) } : {}),
+            ...('urgency' in payload ? { urgency: sanitizeOptional(payload.urgency) } : {}),
+            ...('objection' in payload ? { objection: sanitizeOptional(payload.objection) } : {}),
+            ...('consent' in payload ? { consent: payload.consent } : {}),
+        },
+    })
+
+export const registerInvalidAttempt = (session, state) => ({
+    ...session,
+    invalidAttempts: {
+        ...session.invalidAttempts,
+        [state]: Number(session.invalidAttempts?.[state] ?? 0) + 1,
+    },
+    updatedAt: nowIso(),
+    expiresAt: expiresAt(),
+})
+
+export const clearStateInvalidAttempts = (session, state) => ({
+    ...session,
+    invalidAttempts: {
+        ...session.invalidAttempts,
+        [state]: 0,
+    },
+    updatedAt: nowIso(),
+    expiresAt: expiresAt(),
+})
+
+export const isSessionExpired = (session) => {
+    if (!session?.updatedAt) return true
+    const updatedAtMs = new Date(session.updatedAt).getTime()
+    if (Number.isNaN(updatedAtMs)) return true
+    return Date.now() - updatedAtMs > SESSION_EXPIRATION_MS
+}
 
 export const clearConversationData = (session) =>
     updateSession(session, {

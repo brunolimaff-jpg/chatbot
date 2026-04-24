@@ -6,66 +6,14 @@ import {
     persistConsentedHistory,
     updateSession,
 } from '../../domain/entities/conversation-session.ts'
+import {
+    buildQualificationContext,
+    textSlotFields,
+    usefulDetailFields,
+} from './sandbox-handoff-context.ts'
 
 const fallbackObjective = (session, message) => session.leadDraft.objective ?? (String(message ?? '').trim() || 'avaliacao personalizada')
 const immediateHandoffIntents = new Set(['clinical_risk', 'human_request'])
-
-const usefulDetailFields = [
-    'bodyArea',
-    'skinToneOrPhototype',
-    'budgetConcern',
-    'budgetPreference',
-    'preferredWindow',
-    'objection',
-    'urgency',
-    'expectationRisk',
-    'territoryHint',
-    'userNeighborhood',
-]
-
-const extendedLeadFields = [
-    'service',
-    'objective',
-    'bodyArea',
-    'skinToneOrPhototype',
-    'budgetConcern',
-    'budgetPreference',
-    'preferredWindow',
-    'objection',
-    'urgency',
-    'expectationRisk',
-    'territoryHint',
-    'userNeighborhood',
-    'sourceCampaign',
-    'sourceAd',
-    'sourceUrl',
-    'technologyContext',
-    'technologyMentioned',
-    'protocolRationale',
-    'handoffSummary',
-    'qualificationReasons',
-    'nextSuggestedAction',
-]
-
-const textSlotFields = [
-    'preferredWindow',
-    'objection',
-    'urgency',
-    'bodyArea',
-    'skinToneOrPhototype',
-    'budgetPreference',
-    'expectationRisk',
-    'territoryHint',
-    'userNeighborhood',
-    'sourceCampaign',
-    'sourceAd',
-    'sourceUrl',
-    'technologyContext',
-    'technologyMentioned',
-    'protocolRationale',
-    'handoffSummary',
-    'nextSuggestedAction',
-]
 
 export class SandboxConversationService {
     constructor({
@@ -103,10 +51,6 @@ export class SandboxConversationService {
 
         if (session.state !== executableDecision.nextState) {
             session = updateSession(session, { state: executableDecision.nextState })
-        }
-
-        if (executableDecision.nextState === CONVERSATION_STATE.CLOSED) {
-            session = updateSession(session, { state: CONVERSATION_STATE.CLOSED })
         }
 
         return this.saveAndReply(session, executableDecision, [executableDecision.reply])
@@ -208,7 +152,7 @@ export class SandboxConversationService {
             preferredWindow: session.leadDraft.preferredWindow ?? 'nao informado',
             consent: true,
             source: 'sandbox',
-            qualificationContext: this.buildQualificationContext(session.leadDraft, decision),
+            qualificationContext: buildQualificationContext(session.leadDraft, decision),
         })
 
         const handoff = await this.handoffLeadUseCase.execute({
@@ -261,48 +205,4 @@ export class SandboxConversationService {
         return updateSession(session, { leadDraft })
     }
 
-    buildQualificationContext(draft = {}, decision = {}) {
-        const context = {}
-        for (const field of extendedLeadFields) {
-            if (Array.isArray(draft[field]) && draft[field].length) context[field] = draft[field]
-            else if (draft[field] !== undefined && draft[field] !== null && draft[field] !== '') context[field] = draft[field]
-        }
-
-        return {
-            ...context,
-            handoffSummary: draft.handoffSummary ?? this.buildHandoffSummary(draft),
-            nextSuggestedAction: draft.nextSuggestedAction ?? this.resolveNextSuggestedAction(draft, decision),
-            nlu: {
-                intent: decision.intent,
-                source: decision.source,
-                modelUsed: decision.modelUsed,
-                confidence: decision.confidence,
-            },
-        }
-    }
-
-    buildHandoffSummary(draft = {}) {
-        const parts = []
-        if (draft.service) parts.push(`interesse em ${draft.service}`)
-        if (draft.objective) parts.push(`objetivo: ${draft.objective}`)
-        if (draft.bodyArea) parts.push(`regiao: ${draft.bodyArea}`)
-        if (draft.skinToneOrPhototype) parts.push(`tom de pele/fototipo: ${draft.skinToneOrPhototype}`)
-        if (draft.budgetConcern || draft.objection === 'price' || draft.objection === 'preco') parts.push('objecao de preco')
-        if (draft.budgetPreference) parts.push(`preferencia de investimento: ${draft.budgetPreference}`)
-        if (draft.preferredWindow) parts.push(`janela: ${draft.preferredWindow}`)
-        if (draft.expectationRisk) parts.push(`expectativa alinhada: ${draft.expectationRisk}`)
-        if (draft.territoryHint || draft.userNeighborhood) parts.push(`contexto local: ${draft.territoryHint ?? draft.userNeighborhood}`)
-        if (draft.sourceCampaign || draft.sourceAd) parts.push(`origem: ${draft.sourceCampaign ?? draft.sourceAd}`)
-        if (draft.technologyContext) parts.push(`tecnologia: ${draft.technologyContext}`)
-        if (draft.protocolRationale) parts.push(`racional do protocolo: ${draft.protocolRationale}`)
-
-        return parts.length ? parts.join('; ') : 'Lead pediu continuidade pelo WhatsApp.'
-    }
-
-    resolveNextSuggestedAction(draft = {}, decision = {}) {
-        if (draft.territoryHint || draft.userNeighborhood) return 'mandar pin e seguir com avaliacao'
-        if (decision.intent === 'price_question' || draft.budgetConcern) return 'explicar avaliacao e opcoes sem compromisso'
-        if (draft.service && draft.objective) return 'chamar para orientar avaliacao'
-        return 'chamar pelo WhatsApp'
-    }
 }
