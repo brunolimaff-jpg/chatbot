@@ -3,369 +3,180 @@ import assert from 'node:assert/strict'
 
 import { GeminiAiAssistant } from '../../src/infrastructure/ai/gemini-ai-assistant.ts'
 
-test('usa o modelo fallback quando o modelo primario retorna JSON invalido', async () => {
-    const calls = []
+const createPromptClient = (response = {}) => {
+    const state = { prompt: '', calls: [] }
     const client = {
         models: {
             async generateContent(payload) {
-                calls.push(payload.model)
-                if (payload.model === 'models/gemini-3.1-flash-lite-preview') {
-                    return { text: 'nao-json' }
-                }
-
+                state.calls.push(payload.model)
+                state.prompt = payload.contents
                 return {
                     text: JSON.stringify({
-                        interest: 'depilacao_laser',
-                        urgency: 'media',
-                        objectionTag: 'preco',
-                        summary: 'Lead busca depilacao a laser e perguntou sobre valores.',
+                        intent: 'general_question',
+                        reply: 'Resposta da Maêve.',
+                        nextState: 'DISCOVERY',
+                        slots: {},
+                        handoff: { recommended: false, reason: null, priority: 'normal' },
+                        risk: { clinicalRisk: false, diagnosisRequest: false },
+                        confidence: 0.9,
+                        reasoningSummary: 'Resposta válida.',
+                        ...response,
                     }),
                 }
             },
         },
     }
+    return { client, state }
+}
 
-    const assistant = new GeminiAiAssistant({
+const createAssistant = (client) =>
+    new GeminiAiAssistant({
         client,
         model: 'models/gemini-3.1-flash-lite-preview',
         fallbackModel: 'gemini-2.5-pro',
         timeoutMs: 1000,
     })
 
-    const result = await assistant.assessText('Quero depilacao a laser, quanto custa?')
+const runTurn = async (assistant, input = {}) =>
+    assistant.planConversationTurn({
+        message: input.message ?? 'olá',
+        session: input.session ?? { state: 'DISCOVERY', leadDraft: {}, history: [], transientHistory: [] },
+        catalog: input.catalog ?? [],
+        technologies: input.technologies ?? [],
+    })
+
+test('usa o modelo fallback quando o modelo primário retorna JSON inválido', async () => {
+    const calls = []
+    const client = {
+        models: {
+            async generateContent(payload) {
+                calls.push(payload.model)
+                if (payload.model === 'models/gemini-3.1-flash-lite-preview') return { text: 'nao-json' }
+                return {
+                    text: JSON.stringify({
+                        interest: 'depilacao_laser',
+                        urgency: 'media',
+                        objectionTag: 'preco',
+                        summary: 'Lead busca depilação a laser e perguntou sobre valores.',
+                    }),
+                }
+            },
+        },
+    }
+
+    const result = await createAssistant(client).assessText('Quero depilação a laser, quanto custa?')
 
     assert.deepEqual(calls, ['models/gemini-3.1-flash-lite-preview', 'gemini-2.5-pro'])
     assert.equal(result.interest, 'depilacao_laser')
     assert.equal(result.objectionTag, 'preco')
 })
 
-test('cai para heuristica local quando Gemini falha nos dois modelos', async () => {
-    const client = {
-        models: {
-            async generateContent() {
-                throw new Error('api unavailable')
-            },
-        },
-    }
-
-    const assistant = new GeminiAiAssistant({
-        client,
-        model: 'models/gemini-3.1-flash-lite-preview',
-        fallbackModel: 'gemini-2.5-pro',
-        timeoutMs: 1000,
-    })
-
-    const result = await assistant.assessText('Tenho interesse em limpeza de pele')
+test('cai para heurística local quando Gemini falha nos dois modelos', async () => {
+    const client = { models: { async generateContent() { throw new Error('api unavailable') } } }
+    const result = await createAssistant(client).assessText('Tenho interesse em limpeza de pele')
 
     assert.equal(result.interest, 'limpeza_pele')
     assert.match(result.summary, /Interesse inferido/)
 })
 
-test('prompt conversacional orienta tom de amiga consultiva e conversao leve', async () => {
-    let prompt = ''
-    const client = {
-        models: {
-            async generateContent(payload) {
-                prompt = payload.contents
-                return {
-                    text: JSON.stringify({
-                        intent: 'greeting',
-                        reply: 'Oi, seja bem-vinda a Maeve. Me conta o que voce quer cuidar hoje?',
-                        nextState: 'DISCOVERY',
-                        slots: {},
-                        handoff: { recommended: false, reason: null, priority: 'normal' },
-                        risk: { clinicalRisk: false, diagnosisRequest: false },
-                        confidence: 0.9,
-                        reasoningSummary: 'Abertura leve.',
-                    }),
-                }
-            },
-        },
-    }
+test('prompt conversacional orienta tom de amiga consultiva e conversão leve', async () => {
+    const { client, state } = createPromptClient({ intent: 'greeting' })
+    await runTurn(createAssistant(client), { message: 'alô' })
 
-    const assistant = new GeminiAiAssistant({
-        client,
-        model: 'models/gemini-3.1-flash-lite-preview',
-        fallbackModel: 'gemini-2.5-pro',
-        timeoutMs: 1000,
-    })
-
-    await assistant.planConversationTurn({
-        message: 'alo',
-        session: { state: 'DISCOVERY', leadDraft: {}, history: [], transientHistory: [] },
-        catalog: [],
-    })
-
-    assert.match(prompt, /consultora amiga da Maeve/i)
-    assert.match(prompt, /amiga consultiva/i)
-    assert.match(prompt, /ticket acessivel/i)
-    assert.match(prompt, /alta conversao/i)
-    assert.match(prompt, /gerar mais agendamentos/i)
-    assert.match(prompt, /avaliacao leve/i)
-    assert.match(prompt, /bem-vinda/i)
-    assert.match(prompt, /me conta/i)
-    assert.doesNotMatch(prompt, /maximo 1 emoji/i)
-    assert.match(prompt, /1-2 emojis/i)
-    assert.match(prompt, /ate 3/i)
+    assert.match(state.prompt, /consultora amiga da Maêve/i)
+    assert.match(state.prompt, /amiga consultiva/i)
+    assert.match(state.prompt, /ticket acessível/i)
+    assert.match(state.prompt, /alta conversão/i)
+    assert.match(state.prompt, /gerar mais agendamentos/i)
+    assert.match(state.prompt, /avaliação leve/i)
+    assert.match(state.prompt, /bem-vinda/i)
+    assert.match(state.prompt, /me conta/i)
+    assert.match(state.prompt, /1-2 emojis/i)
+    assert.match(state.prompt, /até 3/i)
     for (const emoji of ['😊', '✨', '🌿', '💛', '✅', '⚠️', '⏰', '🤍', '💬', '🙌', '🌸', '🫶', '🔎', '📍', '📌', '🗓️', '💡', '🤝']) {
-        assert.match(prompt, new RegExp(emoji))
+        assert.match(state.prompt, new RegExp(emoji))
     }
-    assert.match(prompt, /varie os emojis/i)
-    assert.match(prompt, /nao repita o mesmo emoji/i)
-    assert.match(prompt, /nao use estereotipos/i)
-    assert.match(prompt, /nao soe como anuncio/i)
+    assert.match(state.prompt, /varie os emojis/i)
+    assert.match(state.prompt, /não repita o mesmo emoji/i)
+    assert.match(state.prompt, /não use estereótipos/i)
+    assert.match(state.prompt, /não soe como anúncio/i)
 })
 
-test('prompt posiciona Maeve como melhor escolha sem ranking falso', async () => {
-    let prompt = ''
-    const client = {
-        models: {
-            async generateContent(payload) {
-                prompt = payload.contents
-                return {
-                    text: JSON.stringify({
-                        intent: 'general_question',
-                        reply: 'A Maeve e a melhor escolha quando voce quer avaliacao cuidadosa e protocolo pensado para voce.',
-                        nextState: 'DISCOVERY',
-                        slots: {},
-                        handoff: { recommended: false, reason: null, priority: 'normal' },
-                        risk: { clinicalRisk: false, diagnosisRequest: false },
-                        confidence: 0.9,
-                        reasoningSummary: 'Posicionamento comercial com cuidado.',
-                    }),
-                }
-            },
-        },
-    }
+test('prompt posiciona Maêve como melhor escolha sem ranking falso', async () => {
+    const { client, state } = createPromptClient()
+    await runTurn(createAssistant(client), { message: 'eles são os melhores do mercado?' })
 
-    const assistant = new GeminiAiAssistant({
-        client,
-        model: 'models/gemini-3.1-flash-lite-preview',
-        fallbackModel: 'gemini-2.5-pro',
-        timeoutMs: 1000,
-    })
-
-    await assistant.planConversationTurn({
-        message: 'eles sao os melhores do mercado?',
-        session: { state: 'DISCOVERY', leadDraft: {}, history: [], transientHistory: [] },
-        catalog: [],
-    })
-
-    assert.match(prompt, /Maeve e a melhor escolha/i)
-    assert.match(prompt, /defenda a Maeve com seguranca/i)
-    assert.match(prompt, /sem ranking falso/i)
-    assert.match(prompt, /sem diminuir concorrentes/i)
-    assert.match(prompt, /avaliacao personalizada/i)
+    assert.match(state.prompt, /Maêve é a melhor escolha/i)
+    assert.match(state.prompt, /defenda a Maêve com segurança/i)
+    assert.match(state.prompt, /sem ranking falso/i)
+    assert.match(state.prompt, /sem diminuir concorrentes/i)
+    assert.match(state.prompt, /avaliação personalizada/i)
 })
 
-test('prompt inclui exemplos Maeve com emoji equilibrado por momento', async () => {
-    let prompt = ''
-    const client = {
-        models: {
-            async generateContent(payload) {
-                prompt = payload.contents
-                return {
-                    text: JSON.stringify({
-                        intent: 'schedule_interest',
-                        reply: 'Perfeito, vou deixar tudo encaminhado pra equipe te chamar por aqui 🌿✨',
-                        nextState: 'READY_FOR_HANDOFF',
-                        slots: {
-                            objective: 'avaliacao personalizada',
-                            handoffSummary: 'Lead pediu avaliacao.',
-                            nextSuggestedAction: 'chamar pelo WhatsApp',
-                        },
-                        handoff: { recommended: true, reason: 'avaliacao_solicitada', priority: 'normal' },
-                        risk: { clinicalRisk: false, diagnosisRequest: false },
-                        confidence: 0.9,
-                        reasoningSummary: 'Handoff com tom Maeve.',
-                    }),
-                }
-            },
-        },
-    }
+test('prompt inclui exemplos Maêve com emoji equilibrado por momento', async () => {
+    const { client, state } = createPromptClient({ intent: 'schedule_interest' })
+    await runTurn(createAssistant(client), { message: 'quero fazer avaliação' })
 
-    const assistant = new GeminiAiAssistant({
-        client,
-        model: 'models/gemini-3.1-flash-lite-preview',
-        fallbackModel: 'gemini-2.5-pro',
-        timeoutMs: 1000,
-    })
-
-    await assistant.planConversationTurn({
-        message: 'quero fazer avaliacao',
-        session: { state: 'DISCOVERY', leadDraft: {}, history: [], transientHistory: [] },
-        catalog: [],
-    })
-
-    assert.match(prompt, /Oi, seja bem-vinda a Maeve 😊✨/)
-    assert.match(prompt, /Entendo 💛 O valor depende/)
-    assert.match(prompt, /Ficamos no Jardim Imperial, em Cuiaba ✨/)
-    assert.match(prompt, /Perfeito, vou deixar tudo encaminhado.*🌿✨/)
-    assert.match(prompt, /Alertas clinicos, preco, LGPD e risco.*moderacao/i)
-    assert.match(prompt, /nunca use emoji para suavizar risco serio/i)
+    assert.match(state.prompt, /Oi, seja bem-vinda à Maêve 😊✨/)
+    assert.match(state.prompt, /Entendo 💛 O valor depende/)
+    assert.match(state.prompt, /Ficamos no Jardim Imperial, em Cuiabá ✨/)
+    assert.match(state.prompt, /Perfeito, vou deixar tudo encaminhado.*🌿✨/)
+    assert.match(state.prompt, /Alertas clínicos, preço, LGPD e risco.*moderação/i)
+    assert.match(state.prompt, /nunca use emoji para suavizar risco sério/i)
 })
 
-test('prompt orienta qualificacao minima e slots consultivos antes do handoff', async () => {
-    let prompt = ''
-    const client = {
-        models: {
-            async generateContent(payload) {
-                prompt = payload.contents
-                return {
-                    text: JSON.stringify({
-                        intent: 'general_question',
-                        reply: 'Me conta mais um detalhe pra eu te orientar melhor.',
-                        nextState: 'QUALIFYING',
-                        slots: {},
-                        handoff: { recommended: false, reason: null, priority: 'normal' },
-                        risk: { clinicalRisk: false, diagnosisRequest: false },
-                        confidence: 0.9,
-                        reasoningSummary: 'Qualificar antes do handoff.',
-                    }),
-                }
-            },
-        },
-    }
+test('prompt orienta qualificação mínima e slots consultivos antes do handoff', async () => {
+    const { client, state } = createPromptClient()
+    await runTurn(createAssistant(client), { message: 'dinheiro' })
 
-    const assistant = new GeminiAiAssistant({
-        client,
-        model: 'models/gemini-3.1-flash-lite-preview',
-        fallbackModel: 'gemini-2.5-pro',
-        timeoutMs: 1000,
-    })
-
-    await assistant.planConversationTurn({
-        message: 'dinheiro',
-        session: { state: 'DISCOVERY', leadDraft: {}, history: [], transientHistory: [] },
-        catalog: [],
-    })
-
-    assert.match(prompt, /objetivo \+ servico\/interesse \+ 1 detalhe util/i)
-    assert.match(prompt, /skinToneOrPhototype/)
-    assert.match(prompt, /budgetConcern/)
-    assert.match(prompt, /budgetPreference/)
-    assert.match(prompt, /expectationRisk/)
-    assert.match(prompt, /territoryHint/)
-    assert.match(prompt, /sourceCampaign/)
-    assert.match(prompt, /nextSuggestedAction/)
-    assert.match(prompt, /qualificationMissing/)
-    assert.match(prompt, /drenagem.*emagrecer/i)
-    assert.match(prompt, /sou negra|fototipo/i)
+    assert.match(state.prompt, /objetivo \+ serviço\/interesse \+ 1 detalhe útil/i)
+    assert.match(state.prompt, /skinToneOrPhototype/)
+    assert.match(state.prompt, /budgetConcern/)
+    assert.match(state.prompt, /budgetPreference/)
+    assert.match(state.prompt, /expectationRisk/)
+    assert.match(state.prompt, /territoryHint/)
+    assert.match(state.prompt, /sourceCampaign/)
+    assert.match(state.prompt, /nextSuggestedAction/)
+    assert.match(state.prompt, /qualificationMissing/)
+    assert.match(state.prompt, /drenagem.*emagrecer/i)
+    assert.match(state.prompt, /sou negra|fototipo/i)
 })
 
-test('prompt inclui tecnologias Maeve como repertorio consultivo interno', async () => {
-    let prompt = ''
-    const client = {
-        models: {
-            async generateContent(payload) {
-                prompt = payload.contents
-                return {
-                    text: JSON.stringify({
-                        intent: 'service_question',
-                        reply: 'Sim, a Maeve trabalha com protocolos corporais. Me conta qual area te incomoda mais?',
-                        nextState: 'QUALIFYING',
-                        slots: {
-                            objective: 'gordura localizada',
-                            service: 'protocolo_personalizado_maeve',
-                            technologyContext: 'protocolo corporal com criolipolise, radiofrequencia e ultrassom',
-                            protocolRationale: 'avaliar regiao e objetivo antes de indicar tecnologia',
-                        },
-                        handoff: { recommended: false, reason: null, priority: 'normal' },
-                        risk: { clinicalRisk: false, diagnosisRequest: false },
-                        confidence: 0.9,
-                        reasoningSummary: 'Usou tecnologias como repertorio interno.',
-                    }),
-                }
-            },
-        },
-    }
-
-    const assistant = new GeminiAiAssistant({
-        client,
-        model: 'models/gemini-3.1-flash-lite-preview',
-        fallbackModel: 'gemini-2.5-pro',
-        timeoutMs: 1000,
+test('prompt inclui tecnologias Maêve como repertório consultivo interno', async () => {
+    const { client, state } = createPromptClient({ intent: 'service_question' })
+    await runTurn(createAssistant(client), {
+        message: 'vocês tratam gordura localizada?',
+        catalog: [{ id: 'protocolo_personalizado_maeve', label: 'Protocolo Personalizado Maêve', aliases: ['gordura localizada'] }],
+        technologies: [{
+            publicName: 'Criodermis Smart',
+            internalModel: 'Criodermis Smart Medical San',
+            brand: 'Medical San',
+            plainUse: 'apoio em protocolos corporais para gordura localizada',
+            relatedServices: ['protocolo_personalizado_maeve'],
+            whenToMention: 'cite apenas quando perguntarem por aparelho ou quando passar confiança sem tecnicismo',
+            avoidClaims: ['resultado garantido'],
+            safetyNotes: ['indicar avaliação antes do protocolo'],
+        }],
     })
 
-    await assistant.planConversationTurn({
-        message: 'voces tratam gordura localizada?',
-        session: { state: 'DISCOVERY', leadDraft: {}, history: [], transientHistory: [] },
-        catalog: [
-            {
-                id: 'protocolo_personalizado_maeve',
-                label: 'Protocolo Personalizado Maeve',
-                aliases: ['gordura localizada'],
-                technologies: [
-                    {
-                        publicName: 'Criodermis Smart',
-                        plainUse: 'apoio em protocolos corporais para gordura localizada',
-                    },
-                ],
-            },
-        ],
-        technologies: [
-            {
-                publicName: 'Criodermis Smart',
-                internalModel: 'Criodermis Smart Medical San',
-                brand: 'Medical San',
-                plainUse: 'apoio em protocolos corporais para gordura localizada',
-                relatedServices: ['protocolo_personalizado_maeve'],
-                whenToMention: 'cite apenas quando perguntarem por aparelho ou quando passar confianca sem tecnicismo',
-                avoidClaims: ['resultado garantido'],
-                safetyNotes: ['indicar avaliacao antes do protocolo'],
-            },
-        ],
-    })
-
-    assert.match(prompt, /Tecnologias Maeve/i)
-    assert.match(prompt, /repertorio consultivo/i)
-    assert.match(prompt, /nao como lista tecnica/i)
-    assert.match(prompt, /linguagem de beneficio percebido/i)
-    assert.match(prompt, /nao cite parametros tecnicos sem pedido explicito/i)
-    assert.match(prompt, /technologyContext/)
-    assert.match(prompt, /technologyMentioned/)
-    assert.match(prompt, /protocolRationale/)
-    assert.match(prompt, /Criodermis Smart/)
-    assert.match(prompt, /resultado garantido/i)
+    assert.match(state.prompt, /Tecnologias Maêve/i)
+    assert.match(state.prompt, /repertório consultivo/i)
+    assert.match(state.prompt, /não.*lista técnica/i)
+    assert.match(state.prompt, /linguagem de benefício percebido/i)
+    assert.match(state.prompt, /Não cite parâmetros técnicos sem pedido explícito/i)
+    assert.match(state.prompt, /technologyContext/)
+    assert.match(state.prompt, /technologyMentioned/)
+    assert.match(state.prompt, /protocolRationale/)
+    assert.match(state.prompt, /Criodermis Smart/)
+    assert.match(state.prompt, /resultado garantido/i)
 })
 
-test('prompt orienta localizacao real e nao inventar rota ou estacionamento', async () => {
-    let prompt = ''
-    const client = {
-        models: {
-            async generateContent(payload) {
-                prompt = payload.contents
-                return {
-                    text: JSON.stringify({
-                        intent: 'location_question',
-                        reply: 'A Maeve fica no Jardim Imperial, em Cuiaba. Posso pedir pra equipe te mandar o pin?',
-                        nextState: 'DISCOVERY',
-                        slots: { territoryHint: 'Jardim Imperial, Cuiaba' },
-                        handoff: { recommended: false, reason: null, priority: 'normal' },
-                        risk: { clinicalRisk: false, diagnosisRequest: false },
-                        confidence: 0.9,
-                        reasoningSummary: 'Resposta de localizacao.',
-                    }),
-                }
-            },
-        },
-    }
+test('prompt orienta localização real e não inventar rota ou estacionamento', async () => {
+    const { client, state } = createPromptClient({ intent: 'location_question' })
+    await runTurn(createAssistant(client), { message: 'onde fica?' })
 
-    const assistant = new GeminiAiAssistant({
-        client,
-        model: 'models/gemini-3.1-flash-lite-preview',
-        fallbackModel: 'gemini-2.5-pro',
-        timeoutMs: 1000,
-    })
-
-    await assistant.planConversationTurn({
-        message: 'onde fica?',
-        session: { state: 'DISCOVERY', leadDraft: {}, history: [], transientHistory: [] },
-        catalog: [],
-    })
-
-    assert.match(prompt, /Avenida das Palmeiras, 17/i)
-    assert.match(prompt, /Jardim Imperial/i)
-    assert.match(prompt, /mandar o pin/i)
-    assert.match(prompt, /Nao invente rota, estacionamento, tempo de deslocamento/i)
+    assert.match(state.prompt, /Avenida das Palmeiras, 17/i)
+    assert.match(state.prompt, /Jardim Imperial/i)
+    assert.match(state.prompt, /mandar o pin/i)
+    assert.match(state.prompt, /Não invente rota, estacionamento, tempo de deslocamento/i)
 })

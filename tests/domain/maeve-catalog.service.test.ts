@@ -3,13 +3,13 @@ import assert from 'node:assert/strict'
 
 import { MaeveCatalogService } from '../../src/domain/services/maeve-catalog.service.ts'
 
-test('responde catalogo da Maeve sem inventar servicos', () => {
+test('responde catálogo da Maêve sem inventar serviços', () => {
     const service = new MaeveCatalogService()
     const answer = service.buildServicesAnswer()
 
-    assert.match(answer, /Depilacao a Laser/)
-    assert.match(answer, /Drenagem Linfatica/)
-    assert.match(answer, /Protocolo Personalizado Maeve/)
+    assert.match(answer, /Depilação a Laser/)
+    assert.match(answer, /Drenagem Linfática/)
+    assert.match(answer, /Protocolo Personalizado Maêve/)
     assert.doesNotMatch(answer, /preenchimento labial/i)
     assert.doesNotMatch(answer, /botox/i)
     assert.doesNotMatch(answer, /Hakon|Criodermis|Ultra-K|Ibramed|Effect/i)

@@ -92,10 +92,10 @@ export class GeminiAiAssistant {
 
     async assessWithModel(model, text) {
         const prompt = [
-            'Voce classifica leads da Maeve Estetica Avancada em Cuiaba.',
-            'Responda somente JSON valido com as chaves: interest, urgency, objectionTag, summary.',
+            'Você classifica leads da Maêve Estética Avançada em Cuiabá.',
+            'Responda somente JSON válido com as chaves: interest, urgency, objectionTag, summary.',
             'interest deve ser um de: avaliacao_geral, limpeza_pele, depilacao_laser, drenagem_linfatica, massagem_modeladora, massagem_relaxante, massagem_pos_operatoria, dermaplaning, outro.',
-            'urgency deve ser: alta, media ou baixa.',
+            'urgency deve ser: alta, média ou baixa.',
             'objectionTag deve ser: preco, dor, recuperacao, seguranca, nenhuma ou outro.',
             `Mensagem: ${text}`,
         ].join('\n')
@@ -133,7 +133,7 @@ export class GeminiAiAssistant {
             interest: String(payload?.interest ?? 'outro'),
             urgency: String(payload?.urgency ?? 'baixa'),
             objectionTag: String(payload?.objectionTag ?? 'nenhuma'),
-            summary: String(payload?.summary ?? 'Resumo nao informado.'),
+            summary: String(payload?.summary ?? 'Resumo não informado.'),
         }
     }
 
